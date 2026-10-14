@@ -1,0 +1,952 @@
+<!doctype html>
+<html lang="zh-HK">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>家庭財富體檢</title>
+<meta name="theme-color" content="#1d5b49">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="財富體檢">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+/* Layout: sticky ledger bar on top, one centered working column, bottom step bar; results split into fixed controls + live output */
+:root{
+  --bg:#f4f6f3; --surface:#ffffff; --sunk:#eef2ee; --ink:#17221e; --muted:#5b6a64; --line:#dce3dd;
+  --accent:#1d5b49; --accent-ink:#ffffff; --accent-soft:#e1ede8; --gold:#a8792a; --gold-soft:#f3ead9;
+  --risk:#b23a2e; --risk-soft:#f6e3e0; --warn:#b97f0f; --warn-soft:#f7edd6; --good:#2c7650; --good-soft:#e0efe6;
+  --f-display:"Noto Serif TC","Songti TC","PMingLiU",serif;
+  --f-body:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei",sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --r:12px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111715; --surface:#19211e; --sunk:#151c1a; --ink:#e5ece8; --muted:#97a69f; --line:#2b3632;
+  --accent:#6dbd9f; --accent-ink:#0f1a16; --accent-soft:#1d332c; --gold:#d6a752; --gold-soft:#33291a;
+  --risk:#e36d5e; --risk-soft:#3a2220; --warn:#e2ab3c; --warn-soft:#352b17; --good:#61c08b; --good-soft:#1c3226; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#111715; --surface:#19211e; --sunk:#151c1a; --ink:#e5ece8; --muted:#97a69f; --line:#2b3632;
+  --accent:#6dbd9f; --accent-ink:#0f1a16; --accent-soft:#1d332c; --gold:#d6a752; --gold-soft:#33291a;
+  --risk:#e36d5e; --risk-soft:#3a2220; --warn:#e2ab3c; --warn-soft:#352b17; --good:#61c08b; --good-soft:#1c3226; color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%} body{margin:0} [hidden]{display:none!important} img{max-width:100%}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media print{.bar,.foot,.toast,.noprint{display:none!important} body{background:#fff} main{padding:0} .card{break-inside:avoid;animation:none;border-color:#ccc}}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.6}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.3}
+h1{font-size:28px} h2{font-size:22px} h3{font-size:17px}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line);
+  padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.bar-in{max-width:1000px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.brand{font-family:var(--f-display);font-weight:700;font-size:18px;color:var(--accent);cursor:pointer;background:none;border:0;padding:0}
+.who{color:var(--muted);font-size:14px;min-width:0;flex:1 1 160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden;background:var(--sunk)}
+.seg button{border:0;background:none;padding:6px 14px;font-size:14px;cursor:pointer;min-height:36px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px;font-size:14px;cursor:pointer;min-height:36px}
+.tab[aria-current="true"]{border-color:var(--accent);color:var(--accent);font-weight:600}
+
+main{max-width:1000px;margin:0 auto;padding-block:20px 120px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:20px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:20px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.card.sunk{background:var(--sunk)}
+.lead{color:var(--muted);margin:0;max-width:62ch}
+.eyebrow{font-size:12px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.f label,.f .lab{font-size:14px;color:var(--muted)}
+.f .hint{font-size:12px;color:var(--muted)}
+input[type=text],input[type=number],input[type=search],select,textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:46px;font-size:16px}
+textarea{min-height:140px;font-family:var(--f-num);font-size:14px;line-height:1.5}
+.unit{position:relative}
+.unit input{padding-right:58px}
+.unit span{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--muted);pointer-events:none}
+.chk{display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);cursor:pointer;min-height:46px}
+.chk input{width:22px;height:22px;accent-color:var(--accent);flex:none}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:10px 18px;cursor:pointer;min-height:44px;font-size:15px}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.ghost{background:none}
+.btn.danger{color:var(--risk);border-color:var(--risk)}
+.btn.sm{padding:6px 12px;min-height:36px;font-size:14px}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;background:var(--sunk);color:var(--muted)}
+.pill.ex{background:var(--gold-soft);color:var(--gold)}
+.pill.bad{background:var(--risk-soft);color:var(--risk)}
+.pill.mid{background:var(--warn-soft);color:var(--warn)}
+.pill.ok{background:var(--good-soft);color:var(--good)}
+.note{font-size:13px;color:var(--muted);margin:0}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(90px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:999px;font-size:14px;z-index:20}
+
+.steps{display:flex;gap:6px;flex-wrap:wrap}
+.step{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 12px;font-size:14px;cursor:pointer;min-height:38px}
+.step[aria-current="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent);font-weight:600}
+.foot{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);z-index:6;
+  padding-block:10px calc(10px + env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.foot-in{max-width:1000px;margin:0 auto;display:flex;gap:10px;justify-content:space-between;align-items:center}
+
+.choice{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.opt{border:1.5px solid var(--line);border-radius:var(--r);padding:16px;background:var(--surface);cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:4px;min-height:96px}
+.opt b{font-family:var(--f-display);font-size:17px}
+.opt span{font-size:13px;color:var(--muted)}
+.opt[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+.clients{display:flex;flex-direction:column;gap:8px}
+.client{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--bg);flex-wrap:wrap}
+.client .nm{font-weight:600;min-width:0}
+
+.big{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.tile{border-radius:var(--r);padding:16px;background:var(--sunk);display:flex;flex-direction:column;gap:2px;border:1px solid var(--line)}
+.tile .k{font-size:13px;color:var(--muted)}
+.tile .v{font-family:var(--f-num);font-size:26px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.2}
+.tile .s{font-size:13px;color:var(--muted)}
+.tile.bad{background:var(--risk-soft);border-color:transparent}.tile.bad .v{color:var(--risk)}
+.tile.mid{background:var(--warn-soft);border-color:transparent}.tile.mid .v{color:var(--warn)}
+.tile.ok{background:var(--good-soft);border-color:transparent}.tile.ok .v{color:var(--good)}
+.chart{width:100%;overflow-x:auto}
+.chart svg{display:block;width:100%;height:auto;min-width:320px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px;color:var(--muted)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.slider{display:flex;flex-direction:column;gap:6px;min-width:0}
+.slider .top{display:flex;justify-content:space-between;gap:8px;font-size:14px}
+.slider .top b{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;height:36px;accent-color:var(--accent)}
+.tbl{width:100%;overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:600;color:var(--muted);font-size:13px}
+td{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+td.t{font-family:var(--f-body)}
+.asset{border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:12px;background:var(--bg)}
+.asset .hd{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.reco{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none;counter-reset:r}
+.reco li{display:flex;gap:12px;align-items:flex-start}
+.reco li::before{counter-increment:r;content:counter(r);flex:none;width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--accent-ink);display:grid;place-items:center;font-family:var(--f-num);font-size:14px}
+.summary p{margin:0;font-size:17px;max-width:65ch}
+details{border:1px solid var(--line);border-radius:10px;padding:10px 14px;background:var(--bg)}
+summary{cursor:pointer;font-weight:600;min-height:32px;display:flex;align-items:center}
+.ovr{display:grid;grid-template-columns:minmax(110px,1fr) 70px 110px minmax(140px,2fr);gap:8px;align-items:center;font-size:14px}
+@media (max-width:560px){.ovr{grid-template-columns:1fr 60px 90px}.ovr .rs{grid-column:1/-1}}
+.confirm{border:1px solid var(--risk);background:var(--risk-soft);border-radius:10px;padding:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+@media (prefers-reduced-motion:no-preference){.card{animation:in .25s ease-out both}@keyframes in{from{transform:translateY(4px)}to{transform:none}}}
+</style>
+</head>
+<body>
+
+
+
+<div class="bar"><div class="bar-in" id="bar"></div></div>
+<main id="app"></main>
+<div class="foot" id="foot" hidden><div class="foot-in" id="footIn"></div></div>
+<div class="toast" id="toast" hidden></div>
+<input type="file" id="importFile" accept=".json,application/json" hidden>
+
+<script>
+/*CALC-START*/
+const LIQ = {A:'即時／7天內',B:'30天內',C:'3–12個月',D:'1年以上／不確定'};
+const CATS = ['現金存款','股票基金債券','上市股權','非上市股權（本企業）','投資房產','自住房產','儲蓄保單現金價值','私募／其他'];
+const LOCS = ['內地','香港','海外'];
+const POOLS = {safe:'安全池',growth:'增值池',legacy:'傳承池',home:'自住資產',business:'企業（牆外）'};
+
+function gpv(P0,g,r,n,d,begin){ // growing payments, today's-value P0, deferred d years, version A
+  g/=100; r/=100; let s=0;
+  for(let k=1;k<=n;k++){ const t = begin ? d+k-1 : d+k; s += P0*Math.pow(1+g,t)/Math.pow(1+r,t); }
+  return s;
+}
+function rOf(c){ return c.as.r[c.as.scen]; }
+function rateOf(c,ccy){ return ccy==='USD'?1:(c.fx[ccy]||1); }
+function assetUSD(c,a){ return (+a.v||0)*10000/rateOf(c,a.ccy); }
+function poolOf(a){
+  if(a.pool && a.pool!=='auto') return a.pool;
+  if(a.owner==='company') return 'business';
+  switch(a.cat){
+    case '現金存款': return 'safe';
+    case '非上市股權（本企業）': return 'business';
+    case '自住房產': return 'home';
+    case '儲蓄保單現金價值': return 'legacy';
+    case '上市股權': return a.biz ? 'business' : 'growth';
+    default: return 'growth';
+  }
+}
+function factorOf(a){
+  if(a.biz || a.cat==='非上市股權（本企業）') return '本業相關';
+  if(a.cat==='現金存款') return null;
+  if(a.cat==='儲蓄保單現金價值') return null;
+  if(a.cat==='投資房產'||a.cat==='自住房產') return '房地產';
+  if(a.cat==='股票基金債券'||a.cat==='上市股權') return '金融市場';
+  return '其他';
+}
+function irr(cfs){
+  const npv = x => cfs.reduce((s,v,t)=>s+v/Math.pow(1+x,t),0);
+  let lo=-0.95, hi=1, flo=npv(lo), fhi=npv(hi);
+  if(!isFinite(flo)||!isFinite(fhi)||flo*fhi>0) return null;
+  for(let i=0;i<200;i++){ const m=(lo+hi)/2, fm=npv(m); if(Math.abs(fm)<1e-9) return m; if(flo*fm<0){hi=m;fhi=fm}else{lo=m;flo=fm} }
+  return (lo+hi)/2;
+}
+function parsePlan(text){
+  const rows=[];
+  (text||'').split(/\r?\n/).forEach(line=>{
+    line=line.trim(); if(!line) return;
+    let parts = line.includes('\t') ? line.split('\t') : line.split(/[\s,，]+/);
+    parts = parts.map(p=>p.replace(/[,$¥￥\s]/g,'')).filter(p=>p!=='');
+    const n = parts.map(Number);
+    if(n.length<4 || n.slice(0,4).some(x=>!isFinite(x))) return;
+    rows.push({y:n[0],prem:n[1]||0,wd:n[2]||0,cv:n[3]||0,db:isFinite(n[4])?n[4]:0});
+  });
+  rows.sort((a,b)=>a.y-b.y);
+  return rows;
+}
+function planStats(rows){
+  if(!rows.length) return null;
+  const maxY = rows[rows.length-1].y, byY={};
+  rows.forEach(r=>byY[r.y]=r);
+  const out=[]; let cumP=0,cumW=0,breakeven=null;
+  for(let Y=1;Y<=maxY;Y++){
+    const r=byY[Y]||{prem:0,wd:0,cv:null,db:null};
+    cumP+=r.prem; cumW+=r.wd;
+    if(!byY[Y]) continue;
+    const cf=new Array(Y+1).fill(0);
+    for(let k=1;k<=Y;k++){ const q=byY[k]; if(q){ cf[k-1]-=q.prem; cf[k]+=q.wd; } }
+    const cs=cf.slice(), cd=cf.slice(); cs[Y]+=r.cv; cd[Y]+=r.db;
+    const total = r.cv + cumW;
+    if(breakeven===null && cumP>0 && total>=cumP) breakeven=Y;
+    out.push({y:Y,cumP,cumW,cv:r.cv,db:r.db,irrS:irr(cs),irrD:r.db?irr(cd):null,lev:cumP?r.db/cumP:null,mult:cumP?total/cumP:null});
+  }
+  const prem1 = rows.find(r=>r.prem>0);
+  return {years:out,breakeven,annualPrem:prem1?prem1.prem:0};
+}
+
+function compute(c){
+  const b=c.basic, as=c.as, r=rOf(c), beg=as.begin, spendY=b.spend*12, incY=b.income*12, R={};
+  R.r=r;
+  // Level 1
+  R.monthsL1 = b.spend>0 ? b.savings/b.spend : 0;
+  R.pp = [10,20,30].map(t=>({t,v:b.savings/Math.pow(1+as.gL/100,t)}));
+  // compounding lines
+  const end = Math.max(c.l1.toAge, b.age+1), save=c.l1.monthly*12, start=c.l1.startAge;
+  const lines={dep:[],now:[],late:[]}; let d=b.savings,n=b.savings,l=b.savings;
+  for(let age=b.age; age<=end; age++){
+    lines.dep.push({x:age,y:d}); lines.now.push({x:age,y:n}); lines.late.push({x:age,y:l});
+    const s1 = age>=start ? save:0, s2 = age>=start+10 ? save:0;
+    d = d*(1+as.dep/100)+s1; n = n*(1+r/100)+s1; l = l*(1+r/100)+s2;
+  }
+  R.lines=lines;
+  // Level 2 goals
+  const g2=c.l2, items=[];
+  if(g2.retire.on){
+    const ra=g2.retire.age, nY=Math.max(0,as.life-ra), dY=Math.max(0,ra-b.age);
+    const need=gpv(g2.retire.monthly*12,as.gL,r,nY,dY,beg);
+    let pension=0;
+    if(c.type==='cn') pension=gpv(g2.pension*12,as.gL,r,nY,dY,beg);
+    if(c.type==='hk') pension=g2.mpf;
+    items.push({key:'retire',label:'退休養老',need,have:g2.retire.have+pension,note:c.type==='hk'?'已包括強積金':c.type==='cn'?'已包括社保':''});
+  }
+  if(g2.edu.on){
+    g2.edu.kids.forEach((k,i)=>{
+      const dY=Math.max(0,k.start-k.age);
+      items.push({key:'edu'+i,label:(k.name||('孩子'+(i+1)))+' 教育金',need:gpv(k.cost,as.gE,r,k.years,dY,true),have:k.have});
+    });
+  }
+  if(g2.med.on) items.push({key:'med',label:'醫療儲備',need:g2.med.amount,have:g2.med.have});
+  if(g2.house.on) items.push({key:'house',label:'置業首期',need:g2.house.amount*Math.pow((1+as.gL/100)/(1+r/100),g2.house.years),have:g2.house.have});
+  const eduNeed = items.filter(x=>x.key.startsWith('edu')).reduce((s,x)=>s+Math.max(0,x.need-x.have),0);
+  const lifeNeed2 = Math.max(0, gpv(spendY,as.gL,r,g2.supportYears,0,beg) + g2.debts + eduNeed - b.savings);
+  const ciNeed2 = gpv(incY,as.gL,r,g2.ciYears,0,true) + gpv(g2.medOOP,as.gM,r,g2.ciYears,0,true);
+  items.push({key:'life',label:'壽險（需求分析法）',need:lifeNeed2,have:g2.lifeCover,note:'參考：倍數法約為年收入10倍'});
+  items.push({key:'ci',label:'重疾',need:ciNeed2,have:g2.ciCover});
+  R.l2=items; R.multiple=incY*10;
+  const gapSave = items.filter(x=>!['life','ci'].includes(x.key)).reduce((s,x)=>s+Math.max(0,x.need-x.have),0);
+  const yrs = Math.max(1,(g2.retire.on?g2.retire.age:65)-b.age), rr=r/100;
+  R.gapSave=gapSave; R.yrsSave=yrs;
+  R.annualToClose = gapSave>0 ? (rr>0 ? gapSave*rr/(1-Math.pow(1+rr,-yrs))/(1+rr) : gapSave/yrs) : 0;
+  R.tomorrow2 = {
+    income: b.spend>0 ? b.savings/b.spend : 0,
+    ill: b.spend>0 ? Math.max(0,b.savings+g2.ciCover-g2.medOOP*g2.ciYears)/b.spend : 0,
+    death: b.spend>0 ? Math.max(0,b.savings+g2.lifeCover-g2.debts)/b.spend : 0
+  };
+  // yield comparison (mainland)
+  const P=c.cmp.principal, N=c.cmp.years, fxY=c.cmp.fx/100;
+  R.cmp=[
+    {k:'定期存款',r:as.dep},{k:'國債',r:c.cmp.tb},{k:'大額存單',r:c.cmp.cd},
+    {k:'美元方案（保證部分）',r:c.cmp.guar,usd:true},{k:'美元方案（演示，含非保證）',r:c.cmp.illus,usd:true}
+  ].map(x=>{
+    const pts=[]; for(let t=0;t<=N;t++){ let v=P*Math.pow(1+x.r/100,t); if(x.usd) v*=Math.pow(1+fxY,t); pts.push({x:t,y:v}); }
+    return {...x,pts,final:pts[pts.length-1].y};
+  });
+  // Level 3
+  const L=c.l3, A=L.assets.map(a=>({...a,usd:assetUSD(c,a),pl:poolOf(a)}));
+  const personal=A.filter(a=>a.owner!=='company');
+  const tot = personal.reduce((s,a)=>s+a.usd,0), totAll=A.reduce((s,a)=>s+a.usd,0);
+  const tiers={A:0,B:0,C:0,D:0}; personal.forEach(a=>tiers[a.liq]=(tiers[a.liq]||0)+a.usd);
+  const quick=tiers.A+tiers.B;
+  const fac={}; personal.forEach(a=>{const f=factorOf(a); if(f) fac[f]=(fac[f]||0)+a.usd;});
+  let topF=null,topV=0; Object.entries(fac).forEach(([k,v])=>{if(v>topV){topV=v;topF=k}});
+  const reg={}; personal.forEach(a=>reg[a.loc]=(reg[a.loc]||0)+a.usd);
+  let topR=null,topRV=0; Object.entries(reg).forEach(([k,v])=>{if(v>topRV){topRV=v;topR=k}});
+  const ccyM={}; personal.forEach(a=>ccyM[a.ccy]=(ccyM[a.ccy]||0)+a.usd);
+  const st=L.stress;
+  const stressed = personal.reduce((s,a)=>{
+    let drop=a.hc||0;
+    if(['上市股權','非上市股權（本企業）','股票基金債券'].includes(a.cat)) drop=Math.max(drop,st.eq);
+    if(['投資房產','自住房產'].includes(a.cat)) drop=Math.max(drop,st.re);
+    let v=a.usd*(1-drop/100); if(a.ccy==='CNY') v*=(1-st.fx/100); return s+v;
+  },0);
+  const fxLoss = personal.filter(a=>a.ccy==='CNY').reduce((s,a)=>s+a.usd,0)*st.fx/100;
+  const mines=L.mines, mineCount=['guar','pledge','suit','marital'].filter(k=>mines[k].on).length;
+  const mineAmt=['guar','pledge','suit'].reduce((s,k)=>s+(mines[k].on?mines[k].amt:0),0);
+  const estate = L.need.tax.on ? Math.max(0,(tot-L.need.tax.ex)*L.need.tax.rate/100) : 0;
+  const lifeNeed = Math.max(0, gpv(spendY,as.gL,r,L.need.supportYears,0,beg) + estate + L.need.emergency + L.debts - (L.need.offset?L.need.reserve:0));
+  const hlv = gpv(incY*(1-L.need.selfPct/100),as.gL,r,Math.max(0,L.need.retireAge-b.age),0,false);
+  const ciNeed = gpv(spendY,as.gL,r,L.need.ciYears,0,true)+gpv(L.need.medOOP,as.gM,r,L.need.ciYears,0,true)+L.need.ciBuffer;
+  const retNeed = gpv(L.need.retireMonthly*12,as.gL,r,Math.max(0,as.life-L.need.retireAge),Math.max(0,L.need.retireAge-b.age),beg);
+  const gaps=[
+    {key:'life',label:'壽險',need:lifeNeed,have:c.l2.lifeCover},
+    {key:'ci',label:'重疾',need:ciNeed,have:c.l2.ciCover},
+    {key:'retire',label:'本人養老',need:retNeed,have:L.need.retireHave}
+  ];
+  L.members.forEach((m,i)=>{
+    if(m.role==='配偶'){
+      const s=Math.max(m.age,L.need.spouseStart);
+      gaps.push({key:'sp'+i,label:(m.name||'配偶')+' 生活資金',need:gpv(L.need.spouseMonthly*12,as.gL,r,Math.max(0,as.life-s),Math.max(0,L.need.spouseStart-m.age),beg),have:m.have||0});
+    }
+    if(m.role==='子女'){
+      const s=Math.max(m.age,L.need.kidStart);
+      gaps.push({key:'kid'+i,label:(m.name||'子女')+' 生活資金',need:gpv(L.need.kidMonthly*12,as.gL,r,Math.max(0,as.life-s),Math.max(0,L.need.kidStart-m.age),beg),have:m.have||0});
+    }
+  });
+  const poolSum = k => A.filter(a=>a.pl===k).reduce((s,a)=>s+a.usd,0);
+  const legacyNeed = L.need.legacy + estate;
+  if(legacyNeed>0) gaps.push({key:'legacy',label:'傳承',need:legacyNeed,have:poolSum('legacy')});
+  const monthsL3 = b.spend>0 ? quick/b.spend : 0;
+  // radar
+  const step=(v,th,asc)=>{ // th descending thresholds for 5,4,3,2
+    if(asc){ if(v>=th[0])return 5; if(v>=th[1])return 4; if(v>=th[2])return 3; if(v>=th[3])return 2; return 1; }
+    if(v<th[0])return 5; if(v<th[1])return 4; if(v<th[2])return 3; if(v<th[3])return 2; return 1;
+  };
+  const conc = tot?topV/tot*100:0, regPct=tot?topRV/tot*100:0;
+  const lifeRatio = lifeNeed>0?c.l2.lifeCover/lifeNeed*100:100, ciRatio=ciNeed>0?c.l2.ciCover/ciNeed*100:100;
+  const prot=Math.min(lifeRatio,ciRatio);
+  const ent=L.ent, sep=1+[ent.noGuar,ent.separate,ent.homeApart,ent.indep].filter(Boolean).length;
+  const lg=L.legacyChk, lgN=[lg.will,lg.bene,lg.trust,lg.knows,lg.plan].filter(Boolean).length;
+  const retireOK = retNeed<=L.need.retireHave;
+  const hc=L.healthChk, hN=1+[hc.med,hc.ci,retireOK,hc.ltc].filter(Boolean).length;
+  const auto={
+    liq:step(monthsL3,[24,12,6,3],true), conc:step(conc,[30,50,70,85],false), sep, prot:step(prot,[100,75,50,25],true),
+    legacy:Math.max(1,lgN), region:step(regPct,[50,65,80,90],false),
+    debt:Math.max(1,5-mineCount-(L.debts>quick?1:0)), health:Math.min(5,hN)
+  };
+  const radar={}; Object.keys(auto).forEach(k=>{const o=L.ovr[k]; radar[k]= (o&&o.s)?+o.s:auto[k];});
+  const safeTarget=b.spend*L.safeMonths;
+  R.l3={A,tot,totAll,tiers,quick,monthsL3,topF,topV,conc,topR,regPct,reg,ccyM,stressed,fxLoss,mineCount,mineAmt,estate,
+    lifeNeed,hlv,ciNeed,retNeed,gaps,auto,radar,retireOK,lifeRatio,ciRatio,
+    pools:{safe:poolSum('safe'),growth:poolSum('growth'),legacy:poolSum('legacy'),home:poolSum('home'),business:poolSum('business'),safeTarget,legacyNeed,
+      growthBiz:A.filter(a=>a.pl==='growth'&&a.biz).reduce((s,a)=>s+a.usd,0)},
+    tomorrow:{
+      income: monthsL3,
+      ill: b.spend>0?Math.max(0,quick+c.l2.ciCover-L.need.medOOP*L.need.ciYears)/b.spend:0,
+      death: b.spend>0?Math.max(0,quick+c.l2.lifeCover-estate-L.debts)/b.spend:0,
+      biz: b.spend>0?Math.max(0,personal.filter(a=>(a.liq==='A'||a.liq==='B')&&!a.biz).reduce((s,a)=>s+a.usd,0)-mineAmt)/b.spend:0
+    }};
+  return R;
+}
+/*CALC-END*/
+
+const $ = s=>document.querySelector(s);
+const esc = s=>String(s??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const KEY='wealthcheck.v1';
+let S={clients:{},cur:null}, ui={view:'home',step:0,confirmDel:null};
+const uid=()=>Math.random().toString(36).slice(2,10);
+
+function newClient(example){
+  const k=7.1, w=v=>v*10000/k; // example values typed in 萬人民幣
+  const c={id:uid(),name:'新客戶',type:'hk',level:1,ccy:'CNY',updated:Date.now(),example:false,
+    fx:{CNY:7.1,HKD:7.8},
+    basic:{age:40,income:w(5),spend:w(3),savings:w(50),spouse:true,kids:1},
+    as:{gL:3,gE:5,gM:10,dep:1.5,r:{pess:3,base:5,opt:6},scen:'base',begin:false,life:100},
+    l1:{monthly:w(0.5),startAge:40,toAge:65},
+    l2:{retire:{on:true,age:65,monthly:w(2),have:0},edu:{on:true,kids:[{name:'孩子1',age:8,start:18,years:4,cost:w(30),have:0}]},
+      med:{on:true,amount:w(50),have:0},house:{on:false,amount:w(200),years:5,have:0},
+      mpf:0,pension:w(0.3),debts:0,lifeCover:0,ciCover:0,supportYears:10,ciYears:3,medOOP:w(20)},
+    cmp:{principal:w(100),years:20,tb:2.0,cd:1.8,guar:2.5,illus:5,fx:0},
+    l3:{members:[],tax:{res:'',days:'',overseas:'',src:''},assets:[],debts:0,
+      mines:{guar:{on:false,amt:0,note:''},pledge:{on:false,amt:0,note:''},suit:{on:false,amt:0,note:''},marital:{on:false,amt:0,note:''}},
+      ent:{noGuar:false,separate:false,homeApart:false,indep:false,keyPerson:true},
+      need:{supportYears:10,emergency:w(2000),reserve:w(2000),offset:false,retireAge:65,retireMonthly:w(30),retireHave:0,
+        spouseMonthly:w(25),spouseStart:35,kidMonthly:w(10),kidStart:30,legacy:0,selfPct:30,
+        tax:{on:false,rate:30,ex:w(5000)},ciYears:3,medOOP:w(500),ciBuffer:w(1000)},
+      legacyChk:{will:false,bene:false,trust:false,knows:false,plan:false},
+      healthChk:{med:false,ci:false,ltc:false},
+      stress:{eq:30,re:20,fx:10},safeMonths:12,ovr:{}},
+    plans:[{name:'方案 A',ccy:'USD',text:''}],
+    notes:''
+  };
+  if(example){
+    Object.assign(c,{name:'示例客戶（王總）',type:'ent',level:3,example:true});
+    Object.assign(c.basic,{age:50,income:w(100),spend:w(60),savings:w(2000),kids:2});
+    c.l1.startAge=50;c.l1.monthly=w(20);
+    c.l2.lifeCover=w(3000);c.l2.ciCover=w(500);
+    c.l3.members=[{role:'配偶',name:'太太',age:35,loc:'內地',taxRes:'內地',have:0},
+      {role:'子女',name:'大兒子',age:18,loc:'海外',taxRes:'待確認',have:0},
+      {role:'子女',name:'小兒子',age:18,loc:'海外',taxRes:'待確認',have:0}];
+    c.l3.assets=[
+      {name:'公司股權',cat:'非上市股權（本企業）',v:30000,ccy:'CNY',loc:'內地',liq:'D',hc:40,owner:'personal',biz:true,pool:'auto',rest:'有質押'},
+      {name:'北京住宅',cat:'自住房產',v:3000,ccy:'CNY',loc:'內地',liq:'C',hc:20,owner:'personal',biz:false,pool:'auto',rest:''},
+      {name:'投資物業兩套',cat:'投資房產',v:2000,ccy:'CNY',loc:'內地',liq:'C',hc:25,owner:'personal',biz:false,pool:'auto',rest:''},
+      {name:'銀行存款及理財',cat:'現金存款',v:2000,ccy:'CNY',loc:'內地',liq:'A',hc:0,owner:'personal',biz:false,pool:'auto',rest:''},
+      {name:'香港美元存款',cat:'現金存款',v:100,ccy:'USD',loc:'香港',liq:'A',hc:0,owner:'personal',biz:false,pool:'auto',rest:''}];
+    c.l3.mines.pledge={on:true,amt:w(3000),note:'股權質押融資'};
+    c.l3.mines.guar={on:true,amt:w(5000),note:'為公司銀行貸款擔保'};
+    c.l3.ent.keyPerson=true;
+    c.l3.healthChk.med=true;
+    c.l3.legacyChk.bene=true;
+  }
+  return c;
+}
+
+function load(){
+  try{ localStorage.setItem(KEY+'.t','1'); localStorage.removeItem(KEY+'.t'); }catch(e){ saveOK=false; }
+  try{ const raw=localStorage.getItem(KEY); if(raw){ const d=JSON.parse(raw); if(d&&d.clients) S=d; } }catch(e){}
+  if(!Object.keys(S.clients).length){ const c=newClient(true); S.clients[c.id]=c; S.cur=c.id; }
+  Object.values(S.clients).forEach(fix);
+}
+function fix(c){ // fill fields missing from older saves
+  const base=newClient(false);
+  (function merge(t,s){ for(const k in s){ if(t[k]===undefined) t[k]=JSON.parse(JSON.stringify(s[k])); else if(s[k]&&typeof s[k]==='object'&&!Array.isArray(s[k])&&typeof t[k]==='object') merge(t[k],s[k]); } })(c,base);
+}
+let saveT=null, saveOK=true;
+function save(){ clearTimeout(saveT); saveT=setTimeout(()=>{ try{ localStorage.setItem(KEY,JSON.stringify(S)); saveOK=true; }catch(e){ saveOK=false; } renderBar(); },300); }
+const C=()=>S.clients[S.cur];
+
+function getP(o,p){ return p.split('.').reduce((x,k)=>x==null?x:x[k],o); }
+function setP(o,p,v){ const ks=p.split('.'); const last=ks.pop(); const t=ks.reduce((x,k)=>x[k],o); t[last]=v; }
+
+// money: stored USD; shown in 萬 of display currency
+const dispRate=()=>rateOf(C(),C().ccy);
+const ccyLabel=()=>C().ccy==='USD'?'萬美元':'萬人民幣';
+function fmtW(usd,dp){ const v=usd*dispRate()/10000; const d=dp??(Math.abs(v)>=100?0:1); return (isFinite(v)?v:0).toLocaleString('zh-HK',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+const money=(usd)=>`${fmtW(usd)} ${ccyLabel()}`;
+const mo=v=>(isFinite(v)?v:0)>=999?'999+':(Math.round(v*10)/10).toLocaleString('zh-HK');
+const pct=(v,d=1)=>v==null||!isFinite(v)?'—':(v*100).toFixed(d)+'%';
+
+// field builders
+function fMoney(k,label,hint){ const v=getP(C(),k); const shown=Math.round(v*dispRate()/10000*100)/100;
+  return `<div class="f"><label for="${id(k)}">${label}</label><div class="unit"><input type="number" inputmode="decimal" step="any" id="${id(k)}" data-k="${k}" data-t="money" value="${shown}"><span>${C().ccy==='USD'?'萬美元':'萬元'}</span></div>${hint?`<span class="hint">${hint}</span>`:''}</div>`; }
+function fNum(k,label,unit,hint){ const v=getP(C(),k);
+  return `<div class="f"><label for="${id(k)}">${label}</label><div class="unit"><input type="number" inputmode="decimal" step="any" id="${id(k)}" data-k="${k}" data-t="num" value="${v??''}"><span>${unit||''}</span></div>${hint?`<span class="hint">${hint}</span>`:''}</div>`; }
+function fText(k,label,ph){ return `<div class="f"><label for="${id(k)}">${label}</label><input type="text" id="${id(k)}" data-k="${k}" data-t="text" value="${esc(getP(C(),k))}" placeholder="${esc(ph||'')}"></div>`; }
+function fSel(k,label,opts,rerender){ const v=getP(C(),k);
+  return `<div class="f"><label for="${id(k)}">${label}</label><select id="${id(k)}" data-k="${k}" data-t="sel" ${rerender?'data-rr="1"':''}>${opts.map(o=>{const [val,t]=Array.isArray(o)?o:[o,o];return `<option value="${esc(val)}" ${String(v)===String(val)?'selected':''}>${esc(t)}</option>`}).join('')}</select></div>`; }
+function fChk(k,label,rerender){ return `<label class="chk"><input type="checkbox" id="${id(k)}" data-k="${k}" data-t="bool" ${getP(C(),k)?'checked':''} ${rerender?'data-rr="1"':''}><span>${label}</span></label>`; }
+function id(k){ return 'f_'+k.replace(/\./g,'_'); }
+function slider(k,label,min,max,stepv,fmt,isMoney){ const v=getP(C(),k); const shown=isMoney?Math.round(v*dispRate()/10000*100)/100:v;
+  return `<div class="slider"><div class="top"><label for="${id(k)}">${label}</label><b id="${id(k)}_v">${fmt(v)}</b></div><input type="range" id="${id(k)}" data-k="${k}" data-t="${isMoney?'money':'num'}" data-live="1" min="${min}" max="${max}" step="${stepv}" value="${shown}"></div>`; }
+
+/* ---------- charts ---------- */
+function niceMax(v){ if(v<=0) return 1; const p=Math.pow(10,Math.floor(Math.log10(v))); const n=v/p; return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p; }
+function lineChart(series,{w=720,h=300,yfmt,xfmt=x=>x,marker}={}){
+  const pl=64,pr=16,pt=14,pb=34, W=w-pl-pr, H=h-pt-pb;
+  const xs=series.flatMap(s=>s.pts.map(p=>p.x)), ys=series.flatMap(s=>s.pts.map(p=>p.y));
+  const x0=Math.min(...xs), x1=Math.max(...xs); let y0=Math.min(0,...ys), y1=niceMax(Math.max(...ys));
+  if(y0<0) y0=-niceMax(-y0);
+  const X=x=>pl+(x1===x0?0:(x-x0)/(x1-x0)*W), Y=y=>pt+H-(y-y0)/(y1-y0)*H;
+  let g='';
+  for(let i=0;i<=4;i++){ const v=y0+(y1-y0)*i/4; g+=`<line x1="${pl}" x2="${pl+W}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${pl-8}" y="${Y(v)+4}" text-anchor="end" font-size="12" fill="var(--muted)">${yfmt(v)}</text>`; }
+  const span=x1-x0, stepX=span<=10?1:span<=25?5:10;
+  for(let x=Math.ceil(x0/stepX)*stepX;x<=x1;x+=stepX){ g+=`<text x="${X(x)}" y="${pt+H+22}" text-anchor="middle" font-size="12" fill="var(--muted)">${xfmt(x)}</text>`; }
+  if(y0<0) g+=`<line x1="${pl}" x2="${pl+W}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--muted)" stroke-width="1"/>`;
+  series.forEach(s=>{
+    const d=s.pts.map((p,i)=>(i?'L':'M')+X(p.x).toFixed(1)+' '+Y(p.y).toFixed(1)).join(' ');
+    if(s.area){ g+=`<path d="${d} L${X(s.pts[s.pts.length-1].x)} ${Y(Math.max(0,y0))} L${X(s.pts[0].x)} ${Y(Math.max(0,y0))} Z" fill="${s.color}" fill-opacity=".12" stroke="none"/>`; }
+    g+=`<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.w||2.5}" ${s.dash?'stroke-dasharray="6 5"':''} stroke-linejoin="round"/>`;
+    const L=s.pts[s.pts.length-1]; g+=`<circle cx="${X(L.x)}" cy="${Y(L.y)}" r="4" fill="${s.color}"/>`;
+  });
+  return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img">${g}</svg></div><div class="legend">${series.map(s=>`<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join('')}</div>`;
+}
+function gapBars(items){
+  const max=niceMax(Math.max(1,...items.map(i=>Math.max(i.need,i.have))));
+  const w=720, rowH=58, h=items.length*rowH+10, pl=0, W=w-150;
+  let g='';
+  items.forEach((it,i)=>{
+    const y=i*rowH+6, bw=v=>Math.max(0,v/max*W);
+    const have=Math.min(it.have,it.need), gap=Math.max(0,it.need-it.have), extra=Math.max(0,it.have-it.need);
+    g+=`<text x="${pl}" y="${y+14}" font-size="14" fill="var(--ink)" font-weight="600">${esc(it.label)}</text>`;
+    g+=`<rect x="${pl}" y="${y+22}" width="${W}" height="20" rx="4" fill="var(--sunk)"/>`;
+    g+=`<rect x="${pl}" y="${y+22}" width="${bw(have)}" height="20" rx="4" fill="var(--accent)"/>`;
+    if(gap>0) g+=`<rect x="${pl+bw(have)}" y="${y+22}" width="${bw(gap)}" height="20" fill="url(#hatch)" stroke="var(--risk)" stroke-width="1.5"/>`;
+    if(extra>0) g+=`<rect x="${pl+bw(it.need)}" y="${y+22}" width="${bw(extra)}" height="20" rx="4" fill="var(--good)" fill-opacity=".5"/>`;
+    const txt = gap>0?`缺 ${fmtW(gap)}`:`已足夠`;
+    g+=`<text x="${w-4}" y="${y+37}" text-anchor="end" font-size="14" fill="${gap>0?'var(--risk)':'var(--good)'}" font-weight="600">${txt}</text>`;
+    g+=`<text x="${w-4}" y="${y+14}" text-anchor="end" font-size="12" fill="var(--muted)">需要 ${fmtW(it.need)}｜已有 ${fmtW(it.have)}</text>`;
+  });
+  return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img"><defs><pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="var(--risk-soft)"/><line x1="0" y1="0" x2="0" y2="8" stroke="var(--risk)" stroke-width="2"/></pattern></defs>${g}</svg></div>
+  <div class="legend"><span><i style="background:var(--accent)"></i>已準備</span><span><i style="background:var(--risk-soft);border:1.5px solid var(--risk)"></i>缺口</span><span>單位：${ccyLabel()}</span></div>`;
+}
+const RADAR=[['liq','流動性'],['conc','集中度'],['sep','家企隔離'],['prot','保障缺口'],['legacy','傳承安排'],['region','地域與幣種'],['debt','負債與或有負債'],['health','健康與長壽']];
+function radarChart(sc){
+  const w=660,h=450,cx=330,cy=225,R=150,n=RADAR.length;
+  const pt=(i,v)=>{const a=-Math.PI/2+i*2*Math.PI/n; return [cx+Math.cos(a)*R*v/5, cy+Math.sin(a)*R*v/5];};
+  let g='';
+  for(let l=1;l<=5;l++){ g+=`<polygon points="${RADAR.map((_,i)=>pt(i,l).join(',')).join(' ')}" fill="${l===2?'var(--risk-soft)':'none'}" fill-opacity="${l===2?.6:0}" stroke="var(--line)"/>`; }
+  RADAR.forEach((_,i)=>{const [x,y]=pt(i,5); g+=`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="var(--line)"/>`;});
+  const poly=RADAR.map(([k],i)=>pt(i,sc[k]).join(',')).join(' ');
+  g+=`<polygon points="${poly}" fill="var(--accent)" fill-opacity=".22" stroke="var(--accent)" stroke-width="2.5"/>`;
+  RADAR.forEach(([k,t],i)=>{
+    const v=sc[k], [x,y]=pt(i,v), col=v<=2?'var(--risk)':v===3?'var(--warn)':'var(--good)';
+    g+=`<circle cx="${x}" cy="${y}" r="6" fill="${col}"/>`;
+    const [lx,ly]=pt(i,6.3), anchor=Math.abs(lx-cx)<10?'middle':lx>cx?'start':'end';
+    g+=`<text x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="14" fill="var(--ink)" font-weight="600">${t}</text><text x="${lx}" y="${ly+17}" text-anchor="${anchor}" font-size="13" fill="${col}" font-weight="600">${v} 分</text>`;
+  });
+  return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img" style="max-width:660px;margin:0 auto">${g}</svg></div>`;
+}
+function poolsChart(P,R3){
+  const jars=[
+    ['safe','安全池','家庭生活費與應急金',P.safeTarget?P.safe/P.safeTarget:0,`目標 ${fmtW(P.safeTarget)}`],
+    ['prot','保障池','重疾、醫療、壽險',Math.min(R3.lifeRatio,R3.ciRatio)/100,'按保額計'],
+    ['growth','增值池','長期投資',null,P.growthBiz>0?'含本業同方向投資':'與本業分開'],
+    ['legacy','傳承池','留給下一代',P.legacyNeed?P.legacy/P.legacyNeed:null,P.legacyNeed?`目標 ${fmtW(P.legacyNeed)}`:'未設目標']
+  ];
+  const w=720,h=330; let g='';
+  // walls
+  const wallSep=R3.radar.sep, wallReg=R3.radar.region;
+  const wc=s=>s>=4?'var(--good)':s===3?'var(--warn)':'var(--risk)';
+  g+=`<rect x="8" y="34" width="${w-16}" height="${h-120}" rx="14" fill="none" stroke="${wc(wallReg)}" stroke-width="3" stroke-dasharray="${wallReg>=4?'0':'10 6'}"/>`;
+  g+=`<rect x="22" y="48" width="${w-44}" height="${h-148}" rx="10" fill="none" stroke="${wc(wallSep)}" stroke-width="3" stroke-dasharray="${wallSep>=4?'0':'10 6'}"/>`;
+  g+=`<text x="16" y="24" font-size="13" fill="${wc(wallReg)}" font-weight="600">外牆：地域與法律牆（${wallReg>=4?'已建立':wallReg===3?'部分建立':'未建立'}）</text>`;
+  g+=`<text x="${w-16}" y="24" text-anchor="end" font-size="13" fill="${wc(wallSep)}" font-weight="600">內牆：家企防火牆（${wallSep>=4?'已建立':wallSep===3?'部分建立':'未建立'}）</text>`;
+  jars.forEach(([k,t,s,fill,sub],i)=>{
+    const x=44+i*163, y=66, jw=140, jh=110;
+    const f=fill==null?null:Math.max(0,Math.min(1,fill));
+    const col=f==null?'var(--gold)':f>=1?'var(--good)':f>=.5?'var(--warn)':'var(--risk)';
+    g+=`<rect x="${x}" y="${y}" width="${jw}" height="${jh}" rx="12" fill="var(--sunk)" stroke="var(--line)"/>`;
+    if(f!=null) g+=`<rect x="${x}" y="${y+jh-jh*f}" width="${jw}" height="${jh*f}" rx="12" fill="${col}" fill-opacity=".35"/>`;
+    else g+=`<rect x="${x}" y="${y+jh*0.45}" width="${jw}" height="${jh*0.55}" rx="12" fill="var(--gold)" fill-opacity=".25"/>`;
+    g+=`<text x="${x+jw/2}" y="${y+30}" text-anchor="middle" font-size="16" font-weight="700" fill="var(--ink)">${t}</text>`;
+    const val = k==='prot'? (isFinite(f)?Math.round(Math.min(R3.lifeRatio,R3.ciRatio))+'%':'—') : fmtW(P[k]);
+    g+=`<text x="${x+jw/2}" y="${y+62}" text-anchor="middle" font-size="18" font-weight="600" fill="${col}" font-family="IBM Plex Mono,monospace">${val}</text>`;
+    g+=`<text x="${x+jw/2}" y="${y+86}" text-anchor="middle" font-size="12" fill="var(--muted)">${f!=null&&k!=='prot'?'完成 '+Math.round(f*100)+'%':''}</text>`;
+    g+=`<text x="${x+jw/2}" y="${y+jh+20}" text-anchor="middle" font-size="12" fill="var(--muted)">${s}</text>`;
+    g+=`<text x="${x+jw/2}" y="${y+jh+38}" text-anchor="middle" font-size="12" fill="${k==='growth'&&P.growthBiz>0?'var(--risk)':'var(--muted)'}">${sub}</text>`;
+  });
+  // outside: home + business
+  g+=`<rect x="22" y="${h-70}" width="320" height="58" rx="10" fill="var(--sunk)" stroke="var(--line)"/><text x="38" y="${h-44}" font-size="14" font-weight="600" fill="var(--ink)">自住資產（不計入四池）</text><text x="38" y="${h-22}" font-size="14" fill="var(--muted)" font-family="IBM Plex Mono,monospace">${fmtW(P.home)}</text>`;
+  g+=`<rect x="${w-342}" y="${h-70}" width="320" height="58" rx="10" fill="var(--gold-soft)" stroke="var(--gold)"/><text x="${w-326}" y="${h-44}" font-size="14" font-weight="600" fill="var(--ink)">企業（牆外）</text><text x="${w-326}" y="${h-22}" font-size="14" fill="var(--gold)" font-family="IBM Plex Mono,monospace">${fmtW(P.business)}</text>`;
+  return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img">${g}</svg></div><p class="note">牆的線條：實線代表已建立，虛線代表未完全建立。單位：${ccyLabel()}</p>`;
+}
+function tierBar(t,tot){
+  const w=720,h=70; let x=0,g=''; const cols={A:'var(--good)',B:'var(--accent)',C:'var(--warn)',D:'var(--risk)'}, names={A:'快',B:'慢',C:'折',D:'卡'};
+  ['A','B','C','D'].forEach(k=>{ const bw=tot?t[k]/tot*w:0; if(bw>0){ g+=`<rect x="${x}" y="0" width="${bw}" height="34" fill="${cols[k]}" fill-opacity=".8"/>`; if(bw>40) g+=`<text x="${x+bw/2}" y="22" text-anchor="middle" font-size="14" font-weight="700" fill="var(--surface)">${names[k]} ${Math.round(t[k]/tot*100)}%</text>`;} x+=bw; });
+  return `<div class="chart"><svg viewBox="0 0 ${w} 40" role="img">${g}</svg></div><div class="legend">${['A','B','C','D'].map(k=>`<span><i style="background:${cols[k]}"></i>${names[k]}（${LIQ[k]}）${fmtW(t[k])}</span>`).join('')}</div>`;
+}
+function tile(k,v,s,cls){ return `<div class="tile ${cls||''}"><span class="k">${k}</span><span class="v">${v}</span><span class="s">${s||''}</span></div>`; }
+const mcls=m=>m<6?'bad':m<12?'mid':'ok';
+
+/* ---------- views ---------- */
+const TYPES={hk:['香港打工族','強積金、退休、醫療、子女教育'],cn:['內地中產','定存國債對比、教育、養老'],ent:['內地企業家','全家庭評估、家企隔離、傳承']};
+const LEVELS={1:['快速體檢','約 10 分鐘，先建立畫面'],2:['目標規劃','約 30 分鐘，算出每個目標的缺口'],3:['全家庭評估','企業家專用，可分兩次完成']};
+function stepsOf(c){ return c.level===1?['基本資料']:c.level===2?['家庭與收支','目標','現有資源','假設條件']:['家庭成員','資產清單','負債與四個雷','企業關聯','目標與需求','假設條件']; }
+
+function renderBar(){
+  const c=C();
+  $('#bar').innerHTML=`<button class="brand" data-act="home">家庭財富體檢</button>
+  <span class="who">${c?esc(c.name)+'｜'+TYPES[c.type][0]+'｜'+LEVELS[c.level][0]:''}${saveOK?'':' <span class="pill bad">未能保存</span>'}</span>
+  ${c&&ui.view!=='home'?`<div class="tabs"><button class="tab" data-act="form" aria-current="${ui.view==='form'}">填寫</button><button class="tab" data-act="results" aria-current="${ui.view==='results'}">結果</button><button class="tab" data-act="policies" aria-current="${ui.view==='policies'}">保單比較</button><button class="tab" data-act="report" aria-current="${ui.view==='report'}">報告</button></div>`:''}
+  ${c?`<div class="seg" role="group" aria-label="幣種"><button data-ccy="CNY" aria-pressed="${c.ccy==='CNY'}">人民幣</button><button data-ccy="USD" aria-pressed="${c.ccy==='USD'}">美元</button></div>`:''}`;
+}
+function render(keepScroll){
+  const y=window.scrollY;
+  renderBar();
+  const app=$('#app');
+  if(ui.view==='home') app.innerHTML=viewHome();
+  else if(ui.view==='form') app.innerHTML=viewForm();
+  else if(ui.view==='results') app.innerHTML=viewResults();
+  else if(ui.view==='policies') app.innerHTML=viewPolicies();
+  else if(ui.view==='report') app.innerHTML=viewReport();
+  renderFoot();
+  if(ui.view==='results') renderOut();
+  if(ui.view==='policies') renderPlansOut();
+  window.scrollTo(0,keepScroll?y:0);
+}
+function renderFoot(){
+  const f=$('#foot'), c=C();
+  if(ui.view==='form'){
+    const st=stepsOf(c), last=ui.step>=st.length-1;
+    f.hidden=false;
+    $('#footIn').innerHTML=`<button class="btn ghost" data-act="prev" ${ui.step===0?'disabled':''}>上一步</button><span class="note">${ui.step+1} / ${st.length}　${st[ui.step]}</span>${last?'<button class="btn pri" data-act="results">查看結果</button>':'<button class="btn pri" data-act="next">下一步</button>'}`;
+  } else if(ui.view==='results'){
+    f.hidden=false;
+    const next = c.level===1?(c.type==='ent'?'進入全家庭評估':'進入目標規劃'):null;
+    $('#footIn').innerHTML=`<button class="btn ghost" data-act="form">修改資料</button>${next?`<button class="btn pri" data-act="levelup">${next}</button>`:'<button class="btn pri" data-act="report">生成報告</button>'}`;
+  } else f.hidden=true;
+}
+
+function viewHome(){
+  const c=C(), list=Object.values(S.clients).sort((a,b)=>b.updated-a.updated);
+  return `<section class="card"><span class="eyebrow">開始</span><h1>先選客戶，再選類型和深度</h1><p class="lead">加到主屏幕後不需要上網也能用。資料只保存在這部 iPad 裡。換設備前，請先導出備份。</p>${saveOK?'':'<p class="note"><span class="pill bad">這個 App 不能保存資料</span> 請每次用完導出備份，或改用其他 App 打開。</p>'}</section>
+  <section class="card"><div class="row" style="justify-content:space-between"><h2>客戶</h2><button class="btn pri" data-act="newclient">新增客戶</button></div>
+  <div class="clients">${list.map(x=>`<div class="client"><div style="min-width:0"><div class="nm">${esc(x.name)} ${x.example?'<span class="pill ex">示例資料</span>':''}</div><div class="note">${TYPES[x.type][0]}｜${LEVELS[x.level][0]}｜更新於 ${new Date(x.updated).toLocaleDateString('zh-HK')}</div></div>
+    <div class="row">${x.id===S.cur?'<span class="pill ok">目前客戶</span>':`<button class="btn sm" data-open="${x.id}">打開</button>`}<button class="btn sm danger" data-del="${x.id}">刪除</button></div>
+    ${ui.confirmDel===x.id?`<div class="confirm" style="width:100%"><span>確定刪除「${esc(x.name)}」？刪除後無法復原。</span><button class="btn sm danger" data-delok="${x.id}">確定刪除</button><button class="btn sm" data-act="delcancel">取消</button></div>`:''}</div>`).join('')}</div></section>
+  ${c?`<section class="card"><h2>${esc(c.name)}</h2>
+  ${fText('name','客戶代號','建議用代號，例如「王總 A」')}
+  <div class="f"><span class="lab">客戶類型</span><div class="choice">${Object.entries(TYPES).map(([k,[t,s]])=>`<button class="opt" data-type="${k}" aria-pressed="${c.type===k}"><b>${t}</b><span>${s}</span></button>`).join('')}</div></div>
+  <div class="f"><span class="lab">評估深度</span><div class="choice">${Object.entries(LEVELS).map(([k,[t,s]])=>`<button class="opt" data-level="${k}" aria-pressed="${c.level==+k}"><b>第${k}層　${t}</b><span>${s}</span></button>`).join('')}</div></div>
+  <div class="grid">${fNum('fx.CNY','匯率：1 美元兌人民幣','元','請輸入最新匯率')}${fNum('fx.HKD','匯率：1 美元兌港元','元')}</div>
+  <div class="row"><button class="btn pri" data-act="form">開始填寫</button><button class="btn" data-act="results">直接看結果</button></div></section>`:''}
+  <section class="card sunk"><h2>備份</h2><p class="lead">導出會下載一個備份檔（.json）。在新設備上用「導入備份」選擇這個檔案，就能還原所有客戶。</p>
+  <div class="row"><button class="btn" data-act="export">導出備份檔</button><button class="btn" data-act="copybk">複製備份文字</button><button class="btn" data-act="import">導入備份</button></div>
+  <details><summary>貼上備份文字還原</summary><div class="f" style="margin-top:10px"><textarea id="bkText" placeholder="把之前複製的備份文字貼在這裡"></textarea><div class="row"><button class="btn sm" data-act="pastebk">還原</button></div></div></details></section>`;
+}
+
+function viewForm(){
+  const c=C(), st=stepsOf(c);
+  ui.step=Math.min(ui.step,st.length-1);
+  const head=`<section class="card"><span class="eyebrow">第${c.level}層　${LEVELS[c.level][0]}</span><h1>${st[ui.step]}</h1>${c.example?'<p class="note"><span class="pill ex">示例資料</span> 這是示範用的虛構數字，正式使用請新增客戶。</p>':''}
+  ${st.length>1?`<div class="steps">${st.map((s,i)=>`<button class="step" data-step="${i}" aria-current="${i===ui.step}">${i+1}. ${s}</button>`).join('')}</div>`:''}</section>`;
+  let body='';
+  if(c.level===1) body=formBasic(true);
+  else if(c.level===2) body=[()=>formBasic(false),formGoals,formResources,formAssump][ui.step]();
+  else body=[formMembers,formAssets,formLiab,formEnt,formNeeds,formAssump][ui.step]();
+  return head+body;
+}
+function formBasic(l1){
+  const c=C();
+  return `<section class="card"><h2>收入與支出</h2><p class="lead">不求精確，估個大概就可以。金額單位是「萬」。</p>
+  <div class="grid">${fNum('basic.age','年齡','歲')}${fMoney('basic.income','每月收入')}${fMoney('basic.spend','每月支出','包括房貸、家用、保費、子女費用')}${fMoney('basic.savings','現有存款及隨時可用的錢')}</div>
+  <div class="grid">${fChk('basic.spouse','有配偶')}${fNum('basic.kids','子女人數','人')}</div></section>
+  ${l1?`<section class="card"><h2>儲蓄習慣</h2><div class="grid">${fMoney('l1.monthly','每月可以存下','用來畫複利圖')}${fNum('l1.startAge','打算從幾歲開始存','歲')}${fNum('l1.toAge','計算到幾歲','歲')}</div>
+  <div class="grid">${fNum('as.dep','定期存款利率','%','示例數字，請改為最新利率')}${fNum('as.r.base','長期穩健回報假設','%')}${fNum('as.gL','生活通脹','%')}</div></section>`:''}
+  ${l1?`<section class="card"><h2>面談筆記</h2><div class="f"><textarea data-k="notes" data-t="text" id="f_notes" placeholder="客戶的原話、擔心的事、家庭情況">${esc(c.notes)}</textarea></div></section>`:''}`;
+}
+function formGoals(){
+  const c=C(), g=c.l2;
+  return `<section class="card"><h2>這個家庭有哪些目標？</h2><p class="lead">勾選後會展開填寫。金額都用今天的價錢填，工具會自動加上通脹。</p>
+  <div class="grid">${fChk('l2.retire.on','退休養老',1)}${fChk('l2.edu.on','子女教育',1)}${fChk('l2.med.on','醫療儲備',1)}${fChk('l2.house.on','置業',1)}</div></section>
+  ${g.retire.on?`<section class="card"><h3>退休養老</h3><div class="grid">${fNum('l2.retire.age','幾歲退休','歲')}${fMoney('l2.retire.monthly','退休後每月生活費（今天的價錢）')}${fMoney('l2.retire.have','已為退休準備的錢')}</div></section>`:''}
+  ${g.edu.on?`<section class="card"><div class="row" style="justify-content:space-between"><h3>子女教育</h3><button class="btn sm" data-act="addkid">加一個孩子</button></div>
+    ${g.edu.kids.map((k,i)=>`<div class="asset"><div class="hd"><b>${esc(k.name||('孩子'+(i+1)))}</b>${g.edu.kids.length>1?`<button class="btn sm danger" data-rmkid="${i}">移除</button>`:''}</div>
+    <div class="grid">${fText(`l2.edu.kids.${i}.name`,'稱呼')}${fNum(`l2.edu.kids.${i}.age`,'現在年齡','歲')}${fNum(`l2.edu.kids.${i}.start`,'幾歲上大學','歲')}${fNum(`l2.edu.kids.${i}.years`,'讀幾年','年')}${fMoney(`l2.edu.kids.${i}.cost`,'每年學費及生活費（今天的價錢）','海外讀書可按當地費用估算')}${fMoney(`l2.edu.kids.${i}.have`,'已準備')}</div></div>`).join('')}</section>`:''}
+  ${g.med.on?`<section class="card"><h3>醫療儲備</h3><div class="grid">${fMoney('l2.med.amount','希望預留的醫療備用金')}${fMoney('l2.med.have','已準備')}</div></section>`:''}
+  ${g.house.on?`<section class="card"><h3>置業</h3><div class="grid">${fMoney('l2.house.amount','首期金額（今天的價錢）')}${fNum('l2.house.years','幾年後買','年')}${fMoney('l2.house.have','已準備')}</div></section>`:''}`;
+}
+function formResources(){
+  const c=C();
+  return `<section class="card"><h2>現有保障</h2><div class="grid">${fMoney('l2.lifeCover','現有壽險保額')}${fMoney('l2.ciCover','現有重疾保額')}${fMoney('l2.debts','未還貸款（如房貸）')}</div></section>
+  <section class="card"><h2>${c.type==='hk'?'強積金':c.type==='cn'?'社保養老金':'退休收入'}</h2><div class="grid">
+  ${c.type==='hk'?fMoney('l2.mpf','強積金現有結餘'):''}${c.type==='cn'?fMoney('l2.pension','預計每月社保養老金（今天的價錢）'):''}${c.type==='ent'?'<p class="note">企業家的退休安排在第三層評估。</p>':''}</div></section>
+  <section class="card"><h2>出事時要撐多久</h2><div class="grid">${fNum('l2.supportYears','身故後家人需要幾年生活費','年')}${fNum('l2.ciYears','重病時收入中斷幾年','年')}${fMoney('l2.medOOP','重病時每年自費醫療及護理（今天的價錢）')}</div></section>
+  ${c.type==='cn'?`<section class="card"><h2>收益差對比</h2><p class="lead">利率會變，請每次輸入最新數字。美元方案請按建議書填寫。</p>
+  <div class="grid">${fMoney('cmp.principal','用多少錢做比較')}${fNum('cmp.years','比較幾年','年')}${fNum('as.dep','定期存款利率','%')}${fNum('cmp.tb','國債利率','%')}${fNum('cmp.cd','大額存單利率','%')}${fNum('cmp.guar','美元方案保證部分回報','%','按建議書填寫')}${fNum('cmp.illus','美元方案演示回報（含非保證）','%','按建議書填寫')}${fNum('cmp.fx','人民幣兌美元每年變化','%','正數代表美元升值，負數代表美元貶值')}</div></section>`:''}`;
+}
+function formAssump(){
+  return `<section class="card"><h2>假設條件</h2><p class="lead">預設值可以按客戶情況修改。報告會列出所有假設。</p>
+  <div class="grid">${fNum('as.gL','生活通脹','%')}${fNum('as.gE','教育通脹','%')}${fNum('as.gM','醫療通脹','%')}${fNum('as.life','計劃到幾歲','歲')}</div>
+  <h3>回報率三個情景</h3><div class="grid">${fNum('as.r.pess','悲觀','%')}${fNum('as.r.base','基本','%')}${fNum('as.r.opt','樂觀','%')}${fSel('as.scen','目前使用的情景',[['pess','悲觀'],['base','基本'],['opt','樂觀']])}</div>
+  <h3>領取時間</h3><div class="grid">${fSel('as.begin','每年的錢在什麼時候領',[['false','年底領（一般情況）'],['true','年初領（例如身故後家人馬上要用錢）']])}</div>
+  <p class="note">計算方法：每年的生活費先按通脹上調，再折現到今天。輸入的金額都是今天的價錢。</p></section>`;
+}
+function formMembers(){
+  const c=C(), L=c.l3;
+  return `<section class="card"><h2>本人</h2><div class="grid">${fNum('basic.age','年齡','歲')}${fMoney('basic.income','每月收入')}${fMoney('basic.spend','家庭每月支出')}</div></section>
+  <section class="card"><div class="row" style="justify-content:space-between"><h2>家庭成員</h2><button class="btn sm" data-act="addmem">加一位成員</button></div>
+  ${L.members.length?'':'<p class="note">還沒有成員。配偶和子女會各自計算生活資金池。</p>'}
+  ${L.members.map((m,i)=>`<div class="asset"><div class="hd"><b>${esc(m.name||m.role)}</b><button class="btn sm danger" data-rmmem="${i}">移除</button></div>
+  <div class="grid">${fSel(`l3.members.${i}.role`,'關係',['配偶','子女','父母','其他'],1)}${fText(`l3.members.${i}.name`,'稱呼')}${fNum(`l3.members.${i}.age`,'年齡','歲')}${fSel(`l3.members.${i}.loc`,'所在地',LOCS)}${fText(`l3.members.${i}.taxRes`,'稅務居民身份','例如：內地、香港、美國')}${m.role==='配偶'||m.role==='子女'?fMoney(`l3.members.${i}.have`,'已為他準備的資金'):''}</div></div>`).join('')}</section>
+  <section class="card"><h2>稅務四問</h2><p class="lead">只做記錄，具體稅務結論請交給持牌稅務師。</p>
+  <div class="grid">${fText('l3.tax.res','目前稅務居民身份')}${fText('l3.tax.days','近兩年在各地居住天數')}${fText('l3.tax.overseas','海外已有的賬戶、公司、信託')}${fText('l3.tax.src','主要收入來源','分紅、薪酬、租金、利息…')}</div></section>`;
+}
+function formAssets(){
+  const c=C(), L=c.l3;
+  return `<section class="card"><div class="row" style="justify-content:space-between"><div><h2>資產清單</h2><p class="lead">每項資產填金額、幣種、在哪裡、多快能變現。通常 3 到 8 項就能看清全貌。</p></div><button class="btn pri" data-act="addasset">加一項資產</button></div>
+  ${L.assets.map((a,i)=>{ const pl=poolOf(a); return `<div class="asset"><div class="hd"><b>${esc(a.name||'資產'+(i+1))}</b><span class="row"><span class="pill">${POOLS[pl]}</span><button class="btn sm danger" data-rmasset="${i}">移除</button></span></div>
+  <div class="grid">${fText(`l3.assets.${i}.name`,'名稱')}${fSel(`l3.assets.${i}.cat`,'類別',CATS,1)}
+  <div class="f"><label for="${id(`l3.assets.${i}.v`)}">金額</label><div class="unit"><input type="number" inputmode="decimal" step="any" id="${id(`l3.assets.${i}.v`)}" data-k="l3.assets.${i}.v" data-t="num" value="${a.v}"><span>萬${a.ccy==='USD'?'美元':a.ccy==='HKD'?'港元':'元'}</span></div></div>
+  ${fSel(`l3.assets.${i}.ccy`,'幣種',[['CNY','人民幣'],['USD','美元'],['HKD','港元']],1)}${fSel(`l3.assets.${i}.loc`,'所在地',LOCS)}${fSel(`l3.assets.${i}.liq`,'多快能變現',Object.entries(LIQ))}
+  ${fNum(`l3.assets.${i}.hc`,'急賣要打幾折（折價）','%')}${fSel(`l3.assets.${i}.owner`,'屬於',[['personal','個人／家庭'],['company','公司']],1)}${fSel(`l3.assets.${i}.pool`,'放在哪個池子',[['auto','自動判斷'],...Object.entries(POOLS)],1)}
+  ${fText(`l3.assets.${i}.rest`,'限制','質押、代持、限售…')}</div>${fChk(`l3.assets.${i}.biz`,'這項資產和自己的生意同方向（例如做地產又投資地產股）',1)}</div>`}).join('')}
+  ${L.assets.length?'':'<p class="note">還沒有資產。點「加一項資產」開始。</p>'}</section>`;
+}
+function formLiab(){
+  const c=C(), m=c.l3.mines;
+  const mine=(k,t,q)=>`<div class="asset">${fChk(`l3.mines.${k}.on`,`<b>${t}</b>　${q}`,1)}${m[k].on?`<div class="grid">${k!=='marital'?fMoney(`l3.mines.${k}.amt`,'涉及金額'):''}${fText(`l3.mines.${k}.note`,'情況說明')}</div>`:''}</div>`;
+  return `<section class="card"><h2>顯性負債</h2><div class="grid">${fMoney('l3.debts','個人貸款合計','房貸、信貸、其他借款')}</div></section>
+  <section class="card"><h2>四個雷</h2><p class="lead">企業家真正的風險通常不在帳面負債，而在這四項。</p>
+  ${mine('guar','擔保','有沒有替公司、朋友或項目做過擔保？')}${mine('pledge','質押','股權有沒有質押融資？')}${mine('suit','訴訟','近三年有沒有重大訴訟、仲裁或調查？')}${mine('marital','婚姻與代持','主要資產有沒有代持、共同持有或口頭約定？')}</section>`;
+}
+function formEnt(){
+  return `<section class="card"><h2>家企之間有沒有牆？</h2><p class="lead">每一項「是」都代表多一層保護。</p>
+  <div class="grid">${fChk('l3.ent.noGuar','沒有替公司做個人擔保')}${fChk('l3.ent.separate','個人和公司的賬戶分開，沒有混用')}${fChk('l3.ent.homeApart','家庭生活用的資產在個人名下，和企業沒有法律關聯')}${fChk('l3.ent.indep','有不依賴企業的收入來源')}</div>
+  ${fChk('l3.ent.keyPerson','企業高度依賴本人（關鍵人風險）')}</section>`;
+}
+function formNeeds(){
+  const c=C(), n=c.l3.need;
+  return `<section class="card"><h2>壽險需求</h2><div class="grid">${fNum('l3.need.supportYears','家人需要幾年運轉金','年')}${fMoney('l3.need.emergency','突發應急池','訴訟、股權糾紛、搬遷等')}${fMoney('l3.need.reserve','願意永久保留的家庭準備金')}</div>
+  ${fChk('l3.need.offset','這筆準備金可以抵扣壽險需求',1)}
+  <div class="grid">${fMoney('l2.lifeCover','現有壽險保額')}${fNum('l3.need.selfPct','本人消費佔收入比例','%','用於生命價值法')}</div></section>
+  <section class="card"><h2>遺產稅情景</h2><p class="lead">內地目前沒有遺產稅，這裡只做「如果開徵」的壓力測試。</p>${fChk('l3.need.tax.on','計入遺產稅情景',1)}
+  ${n.tax.on?`<div class="grid">${fNum('l3.need.tax.rate','假設稅率','%')}${fMoney('l3.need.tax.ex','假設免稅額')}</div>`:''}</section>
+  <section class="card"><h2>重疾需求</h2><div class="grid">${fNum('l3.need.ciYears','需要覆蓋幾年','年')}${fMoney('l3.need.medOOP','每年自費醫療及護理（今天的價錢）')}${fMoney('l3.need.ciBuffer','額外緩衝')}${fMoney('l2.ciCover','現有重疾保額')}</div></section>
+  <section class="card"><h2>養老與家人資金池</h2><div class="grid">${fNum('l3.need.retireAge','本人幾歲退休','歲')}${fMoney('l3.need.retireMonthly','退休後每月生活費（今天的價錢）')}${fMoney('l3.need.retireHave','已為退休準備')}
+  ${fMoney('l3.need.spouseMonthly','配偶每月生活費（今天的價錢）')}${fNum('l3.need.spouseStart','配偶幾歲開始領','歲')}${fMoney('l3.need.kidMonthly','每個子女每月生活費（今天的價錢）')}${fNum('l3.need.kidStart','子女幾歲開始領','歲')}</div>
+  <p class="note">已準備的金額在「家庭成員」頁按每位成員填寫。</p></section>
+  <section class="card"><h2>傳承</h2><div class="grid">${fMoney('l3.need.legacy','希望留給下一代的金額')}${fNum('l3.safeMonths','安全池目標月數','個月')}</div>
+  <h3>傳承五問</h3><div class="grid">${fChk('l3.legacyChk.will','有遺囑')}${fChk('l3.legacyChk.bene','保單受益人已指定並近年更新')}${fChk('l3.legacyChk.trust','有信託或其他傳承安排')}${fChk('l3.legacyChk.knows','配偶或家人知道主要資產在哪裡')}${fChk('l3.legacyChk.plan','有接班或財富分配計劃')}</div>
+  <h3>健康與長壽</h3><div class="grid">${fChk('l3.healthChk.med','有高端醫療')}${fChk('l3.healthChk.ci','有重疾保障')}${fChk('l3.healthChk.ltc','有長期護理或晚年照顧的資金')}</div></section>`;
+}
+
+/* ---------- results ---------- */
+function viewResults(){
+  const c=C();
+  let ctr='';
+  if(c.level===1) ctr=`${slider('l1.monthly','每月存多少',0,Math.max(10,Math.ceil(c.basic.income*dispRate()/10000*1.5)),0.1,v=>money(v),true)}${slider('l1.startAge','從幾歲開始存',c.basic.age,Math.max(c.basic.age+1,c.l1.toAge-1),1,v=>v+' 歲')}`;
+  if(c.level===2) ctr=`${c.l2.retire.on?slider('l2.retire.age','退休年齡',Math.max(c.basic.age+1,45),75,1,v=>v+' 歲'):''}${c.l2.retire.on?slider('l2.retire.monthly','退休後每月生活費',0,Math.max(5,Math.ceil(c.basic.spend*dispRate()/10000*2)),0.1,v=>money(v),true):''}${slider('l1.monthly','每月存多少（複利圖）',0,Math.max(10,Math.ceil(c.basic.income*dispRate()/10000*1.5)),0.1,v=>money(v),true)}`;
+  if(c.level===3) ctr=`${slider('l3.stress.eq','股權下跌',0,80,5,v=>v+'%')}${slider('l3.stress.re','房產下跌',0,60,5,v=>v+'%')}${slider('l3.stress.fx','人民幣貶值',0,40,1,v=>v+'%')}${slider('l3.need.supportYears','家人需要幾年運轉金',1,30,1,v=>v+' 年')}`;
+  const scen=`<div class="f"><span class="lab">回報率情景</span><div class="seg">${[['pess','悲觀'],['base','基本'],['opt','樂觀']].map(([k,t])=>`<button data-scen="${k}" aria-pressed="${c.as.scen===k}">${t} ${c.as.r[k]}%</button>`).join('')}</div></div>`;
+  const ovr = c.level===3?`<details><summary>手動調整雷達圖分數</summary><div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+    <div class="ovr note"><span>項目</span><span>自動</span><span>手動</span><span class="rs">原因</span></div>
+    ${RADAR.map(([k,t])=>{const o=c.l3.ovr[k]||{s:'',why:''}; c.l3.ovr[k]=o; return `<div class="ovr"><span>${t}</span><span class="num" id="auto_${k}">—</span>
+    <select id="ovr_${k}" data-k="l3.ovr.${k}.s" data-t="sel" data-live="1"><option value="">用自動</option>${[1,2,3,4,5].map(n=>`<option value="${n}" ${String(o.s)===String(n)?'selected':''}>${n} 分</option>`).join('')}</select>
+    <input class="rs" type="text" id="ovrw_${k}" data-k="l3.ovr.${k}.why" data-t="text" value="${esc(o.why)}" placeholder="修改原因"></div>`}).join('')}</div></details>`:'';
+  return `<section class="card"><span class="eyebrow">${LEVELS[c.level][0]}｜${esc(c.name)}</span><h1>${c.level===1?'你的錢，現在是什麼狀態':c.level===2?'每個目標還差多少':'全家庭風險地圖'}</h1>
+  <p class="lead">拖動下面的滑塊，結果會即時變化。</p><div class="grid2">${ctr}</div>${scen}${ovr}</section><div id="out" style="display:flex;flex-direction:column;gap:20px"></div>`;
+}
+function renderOut(){
+  const c=C(), R=compute(c), o=$('#out'); if(!o) return;
+  let h='';
+  if(c.level===1){
+    h+=`<section class="card"><span class="eyebrow">如果明天收入停止</span><div class="big">${tile('現有的錢可以撐',mo(R.monthsL1)+' 個月','按每月支出 '+money(c.basic.spend),mcls(R.monthsL1))}${tile('等於',mo(R.monthsL1/12)+' 年','之後就要動用其他資產')}</div></section>`;
+    h+=`<section class="card"><span class="eyebrow">通脹在吃掉你的存款</span><h2>今天的 ${money(c.basic.savings)}，將來值多少？</h2><div class="big">${R.pp.map(p=>tile(p.t+' 年後的購買力',fmtW(p.v),'相當於今天的 '+ccyLabel())).join('')}</div><p class="note">按每年通脹 ${c.as.gL}% 計算。</p></section>`;
+    h+=compoundCard(c,R);
+  }
+  if(c.level===2){
+    const t=R.tomorrow2;
+    h+=`<section class="card"><span class="eyebrow">如果明天</span><h2>出事時，家裡的錢能撐多久？</h2><div class="big">${tile('收入中斷',mo(t.income)+' 個月','只靠現有存款',mcls(t.income))}${tile('重病',mo(t.ill)+' 個月','存款加重疾賠償，扣除醫療自費',mcls(t.ill))}${tile('身故',mo(t.death)+' 個月','存款加壽險賠償，扣除貸款',mcls(t.death))}</div><p class="note">按家庭每月支出 ${money(c.basic.spend)} 計算。</p></section>`;
+    h+=`<section class="card"><span class="eyebrow">缺口</span><h2>需要多少、已有多少、還差多少</h2>${gapBars(R.l2)}
+      ${R.l2.filter(x=>x.note).map(x=>`<p class="note">${x.label}：${x.note}</p>`).join('')}
+      <p class="note">倍數法參考：年收入 10 倍約 ${money(R.multiple)}。</p></section>`;
+    h+=`<section class="card"><span class="eyebrow">怎樣補</span><div class="big">${tile('目標缺口合計（不含保障）',fmtW(R.gapSave),ccyLabel(), R.gapSave>0?'bad':'ok')}${tile(`若用 ${R.yrsSave} 年補足，每年約需存`,fmtW(R.annualToClose),ccyLabel())}${tile('約等於每月',fmtW(R.annualToClose/12),ccyLabel())}</div><p class="note">按回報 ${R.r}% 計算，每年年初存入。壽險和重疾的缺口用保障補足，不計入這裡。</p></section>`;
+    if(c.type==='cn') h+=cmpCard(c,R);
+    h+=compoundCard(c,R);
+  }
+  if(c.level===3){
+    const L=R.l3;
+    RADAR.forEach(([k])=>{const e=document.getElementById('auto_'+k); if(e) e.textContent=L.auto[k]+' 分';});
+    h+=`<section class="card"><span class="eyebrow">第一步：全局</span><h2>風險雷達圖</h2><p class="lead">5 分最健康。凹進去的地方，就是要先處理的地方。</p>${radarChart(L.radar)}</section>`;
+    h+=`<section class="card"><span class="eyebrow">錢放的位置對不對</span><h2>四池兩牆</h2>${poolsChart(L.pools,L)}</section>`;
+    h+=`<section class="card"><span class="eyebrow">資產看能不能用</span><h2>資產可用性</h2><div class="big">${tile('家庭總資產',fmtW(L.tot),ccyLabel()+'（不含公司名下）')}${tile('30 天內可動用',fmtW(L.quick),'佔 '+(L.tot?Math.round(L.quick/L.tot*100):0)+'%',L.tot&&L.quick/L.tot<.15?'bad':'')}${tile('最大單一風險來源',L.topF||'—',L.topF?'佔 '+Math.round(L.conc)+'%':'',L.conc>=70?'bad':L.conc>=50?'mid':'')}${tile('資產最集中的地區',L.topR||'—',L.topR?'佔 '+Math.round(L.regPct)+'%':'',L.regPct>=80?'bad':'')}</div>${L.tot?tierBar(L.tiers,L.tot):'<p class="note">先在「資產清單」加入資產。</p>'}</section>`;
+    const t=L.tomorrow;
+    h+=`<section class="card"><span class="eyebrow">如果明天</span><h2>出事時，家裡的錢能撐多久？</h2><div class="big">${tile('收入中斷',mo(t.income)+' 個月','30 天內可動用的錢',mcls(t.income))}${tile('重病',mo(t.ill)+' 個月','加重疾賠償，扣除醫療自費',mcls(t.ill))}${tile('身故',mo(t.death)+' 個月','加壽險賠償，扣除貸款'+(L.estate?'及遺產稅情景':''),mcls(t.death))}${tile('生意倒閉',mo(t.biz)+' 個月','只計與本業無關的流動資產，扣除擔保和質押',mcls(t.biz))}</div>
+    <div class="big">${tile('壓力測試後總資產',fmtW(L.stressed),`股權跌 ${c.l3.stress.eq}%、房產跌 ${c.l3.stress.re}%、人民幣貶 ${c.l3.stress.fx}%`,L.tot&&L.stressed/L.tot<.6?'bad':'mid')}${tile('縮水',fmtW(L.tot-L.stressed),'佔 '+(L.tot?Math.round((1-L.stressed/L.tot)*100):0)+'%')}${tile('其中人民幣貶值造成',fmtW(L.fxLoss),'以'+(c.ccy==='USD'?'美元':'人民幣')+'計')}</div><p class="note">按家庭每月支出 ${money(c.basic.spend)} 計算。人民幣貶值的影響以美元購買力計。</p></section>`;
+    h+=`<section class="card"><span class="eyebrow">缺口</span><h2>各資金池還差多少</h2>${gapBars(L.gaps)}
+    <p class="note">壽險用需求分析法：${c.l3.need.supportYears} 年家庭運轉金${L.estate?'＋遺產稅情景':''}＋應急池＋貸款${c.l3.need.offset?'－準備金':''}。交叉驗證：生命價值法約 ${money(L.hlv)}。</p></section>`;
+  }
+  o.innerHTML=h;
+}
+function compoundCard(c,R){
+  const s=[{name:'只放定存（'+c.as.dep+'%）',color:'var(--muted)',pts:R.lines.dep,dash:true},{name:'現在開始存（'+R.r+'%）',color:'var(--accent)',pts:R.lines.now,area:true,w:3},{name:'晚 10 年開始（'+R.r+'%）',color:'var(--gold)',pts:R.lines.late}];
+  const end=R.lines.now.length-1, last=x=>x[end].y;
+  return `<section class="card"><span class="eyebrow">複利的威力</span><h2>同樣的錢，早存、晚存、只放定存</h2>
+  ${lineChart(s,{yfmt:v=>fmtW(v,0),xfmt:x=>x+'歲'})}
+  <div class="big">${tile('現在開始，到 '+R.lines.now[end].x+' 歲',fmtW(last(R.lines.now)),ccyLabel(),'ok')}${tile('晚 10 年開始',fmtW(last(R.lines.late)),'少了 '+fmtW(last(R.lines.now)-last(R.lines.late)),'mid')}${tile('只放定存',fmtW(last(R.lines.dep)),'少了 '+fmtW(last(R.lines.now)-last(R.lines.dep)),'bad')}</div>
+  <p class="note">包括現有存款 ${money(c.basic.savings)}，每月存 ${money(c.l1.monthly)}。回報率為假設，不代表任何產品的保證回報。</p></section>`;
+}
+function cmpCard(c,R){
+  const cols=['var(--muted)','var(--warn)','var(--gold)','var(--accent)','var(--good)'];
+  const s=R.cmp.map((x,i)=>({name:x.k,color:cols[i],pts:x.pts,dash:i<3,w:i>=3?3:2}));
+  return `<section class="card"><span class="eyebrow">收益差對比</span><h2>${money(c.cmp.principal)} 放 ${c.cmp.years} 年</h2>${lineChart(s,{yfmt:v=>fmtW(v,0),xfmt:x=>'第'+x+'年'})}
+  <div class="tbl"><table><tr><th>方式</th><th>年回報</th><th>${c.cmp.years} 年後</th><th>增加</th></tr>${R.cmp.map(x=>`<tr><td class="t">${x.k}</td><td>${x.r}%</td><td>${fmtW(x.final)}</td><td>${fmtW(x.final-c.cmp.principal)}</td></tr>`).join('')}</table></div>
+  <p class="note">美元方案已按每年匯率變化 ${c.cmp.fx}% 換算回人民幣。非保證部分可能高於或低於演示，請以建議書為準。內地客戶需親身到香港簽署保單。</p></section>`;
+}
+
+/* ---------- policies ---------- */
+function viewPolicies(){
+  const c=C();
+  return `<section class="card"><span class="eyebrow">保單比較</span><h1>把建議書的數字貼進來</h1>
+  <p class="lead">每行一個年度，依次為：年度、當年保費、當年提取、年底退保價值、身故賠償。可以直接從 Excel 複製幾列貼上。</p>
+  <p class="note">例子：<span class="num">1　100000　0　20000　1050000</span></p></section>
+  ${c.plans.map((p,i)=>`<section class="card"><div class="row" style="justify-content:space-between">${fText(`plans.${i}.name`,'方案名稱')}${fSel(`plans.${i}.ccy`,'幣種',[['USD','美元'],['HKD','港元'],['CNY','人民幣']])}${c.plans.length>1?`<button class="btn sm danger" data-rmplan="${i}">移除</button>`:''}</div>
+  <div class="f"><label for="f_plans_${i}_text">建議書數字</label><textarea id="f_plans_${i}_text" data-k="plans.${i}.text" data-t="text" data-live="1" placeholder="1	100000	0	20000	1050000">${esc(p.text)}</textarea></div></section>`).join('')}
+  ${c.plans.length<3?'<button class="btn" data-act="addplan">再加一個方案比較</button>':''}
+  <div id="plansOut" style="display:flex;flex-direction:column;gap:20px"></div>`;
+}
+function renderPlansOut(){
+  const c=C(), o=$('#plansOut'); if(!o) return;
+  const st=c.plans.map(p=>({p,s:planStats(parsePlan(p.text))})).filter(x=>x.s&&x.s.years.length);
+  if(!st.length){ o.innerHTML='<section class="card sunk"><p class="lead">貼上數字後，這裡會顯示 IRR、回本年份和保障槓桿。</p></section>'; return; }
+  const cols=['var(--accent)','var(--gold)','var(--risk)'];
+  const series=st.map((x,i)=>({name:x.p.name+' 退保 IRR',color:cols[i],pts:x.s.years.filter(y=>y.irrS!=null&&y.y>=3).map(y=>({x:y.y,y:y.irrS*100}))})).filter(s=>s.pts.length>1);
+  const keys=[5,10,15,20,25,30,40,50,60,70];
+  let h=`<section class="card"><span class="eyebrow">結論</span><div class="big">${st.map((x,i)=>tile(x.p.name,x.s.breakeven?'第 '+x.s.breakeven+' 年回本':'未回本','退保價值加已提取 ≥ 已交保費')).join('')}</div></section>`;
+  if(series.length) h+=`<section class="card"><h2>退保 IRR 走勢</h2>${lineChart(series,{yfmt:v=>v.toFixed(1)+'%',xfmt:x=>'第'+x+'年'})}<p class="note">IRR（內部回報率）是把所有交費和領回的錢放在一起計算的真實年化回報，可以直接和存款利率比較。</p></section>`;
+  st.forEach(x=>{
+    const rows=x.s.years.filter(y=>keys.includes(y.y)||y===x.s.years[x.s.years.length-1]);
+    const cost = x.s.annualPrem && x.s.years[0].db ? x.s.annualPrem/(x.s.years[0].db/1e6) : null;
+    h+=`<section class="card"><h2>${esc(x.p.name)}</h2><div class="tbl"><table><tr><th>年度</th><th>累計保費</th><th>累計提取</th><th>退保價值</th><th>退保 IRR</th><th>身故 IRR</th><th>保障槓桿</th><th>總回報倍數</th></tr>
+    ${rows.map(y=>`<tr><td>${y.y}</td><td>${Math.round(y.cumP).toLocaleString()}</td><td>${Math.round(y.cumW).toLocaleString()}</td><td>${Math.round(y.cv).toLocaleString()}</td><td>${pct(y.irrS,2)}</td><td>${pct(y.irrD,2)}</td><td>${y.lev!=null&&y.db?y.lev.toFixed(1)+' 倍':'—'}</td><td>${y.mult!=null?y.mult.toFixed(2)+' 倍':'—'}</td></tr>`).join('')}</table></div>
+    ${cost?`<p class="note">每 100 萬保額的年保費成本：約 ${Math.round(cost).toLocaleString()}（${x.p.ccy}，按第 1 年身故賠償計）。</p>`:''}
+    <p class="note">金額單位與建議書相同（${x.p.ccy}）。保費視為年初交，提取和退保價值視為年底。</p></section>`;
+  });
+  o.innerHTML=h;
+}
+
+/* ---------- report ---------- */
+const ADVICE={
+  prot:'補足保障缺口：優先處理壽險和重疾，讓「人出事」時家裡有現金注入。',
+  health:'加強健康與長壽準備：高端醫療、重疾保障，以及晚年護理資金。',
+  liq:'建立與企業隔離的家庭安全池，目標至少覆蓋 {m} 個月家庭支出。',
+  conc:'降低對本業的集中：新增投資避開與本業同方向的資產，逐步分散到不同類別。',
+  sep:'建立家企防火牆：減少個人擔保，公私賬戶分開，家庭資產與企業切開法律關係。',
+  debt:'盤點或有負債：逐項處理擔保、質押等風險，並預留應對的流動資金。',
+  region:'分散地域與幣種：避免資產集中在單一地區、單一法律體系和單一貨幣。',
+  legacy:'完善傳承安排：檢視遺囑和受益人指定，評估信託或保單傳承結構。'
+};
+const ORDER=['prot','health','liq','conc','sep','debt','region','legacy'];
+function buildReport(){
+  const c=C(), R=compute(c); let sum=[], reco=[], refer=[], charts='';
+  if(c.level===1){
+    sum.push(`收入停止後，現有的錢大約可以支撐 ${mo(R.monthsL1)} 個月。`);
+    sum.push(`按每年通脹 ${c.as.gL}% 計，今天的 ${money(c.basic.savings)}，20 年後的購買力約等於今天的 ${money(R.pp[1].v)}。`);
+    const e=R.lines.now.length-1; sum.push(`每月存 ${money(c.l1.monthly)}，現在開始和晚 10 年開始，到 ${R.lines.now[e].x} 歲相差約 ${money(R.lines.now[e].y-R.lines.late[e].y)}。`);
+    reco=['先建立至少 6 個月家庭支出的備用金。','把每月儲蓄變成自動扣款，不靠意志力。','下一步做目標規劃，算清退休、教育和保障各差多少。'];
+    charts=compoundCard(c,R);
+  }
+  if(c.level===2){
+    const g=R.l2.map(x=>({...x,gap:Math.max(0,x.need-x.have)})).sort((a,b)=>b.gap-a.gap);
+    sum.push(`收入中斷時，家裡的錢大約可以撐 ${mo(R.tomorrow2.income)} 個月；身故時約 ${mo(R.tomorrow2.death)} 個月。`);
+    if(g[0]&&g[0].gap>0) sum.push(`最大的缺口是「${g[0].label}」，約 ${money(g[0].gap)}。`);
+    sum.push(R.gapSave>0?`要補足儲蓄類目標，${R.yrsSave} 年內每年約需存 ${money(R.annualToClose)}。`:'儲蓄類目標目前已經足夠。');
+    g.filter(x=>x.gap>0).slice(0,3).forEach(x=>reco.push(x.key==='life'||x.key==='ci'?`補足${x.label}保障缺口約 ${money(x.gap)}。`:`為「${x.label}」建立專款專用的儲蓄，缺口約 ${money(x.gap)}。`));
+    if(!reco.length) reco.push('目前各目標大致足夠，建議每年檢視一次假設和進度。');
+    charts=`<section class="card"><h2>缺口</h2>${gapBars(R.l2)}</section>`+(c.type==='cn'?cmpCard(c,R):'')+compoundCard(c,R);
+  }
+  if(c.level===3){
+    const L=R.l3, weak=ORDER.map(k=>[k,L.radar[k]]).sort((a,b)=>a[1]-b[1]).filter(x=>x[1]<=3).slice(0,3);
+    const low=RADAR.filter(([k])=>L.radar[k]<=2).map(x=>x[1]);
+    sum.push(`家庭總資產約 ${money(L.tot)}，其中 30 天內可動用的只有 ${money(L.quick)}，可支撐約 ${mo(L.monthsL3)} 個月家庭支出。`);
+    if(L.topF) sum.push(`最大的單一風險來源是「${L.topF}」，佔家庭資產約 ${Math.round(L.conc)}%。`);
+    sum.push(low.length?`需要優先處理的方面：${low.join('、')}。`:'各方面沒有嚴重弱項，建議維持定期檢視。');
+    reco=weak.length?weak.sort((a,b)=>ORDER.indexOf(a[0])-ORDER.indexOf(b[0])).map(([k])=>ADVICE[k].replace('{m}',c.l3.safeMonths)):['目前結構健康，建議每年檢視一次。'];
+    if(L.estate||c.l3.members.some(m=>m.taxRes&&m.taxRes!=='內地')||c.l3.members.some(m=>m.loc==='海外')) refer.push('持牌稅務師：跨境稅務居民身份及申報安排');
+    if(!c.l3.legacyChk.will||!c.l3.legacyChk.trust) refer.push('律師／信託顧問：遺囑及信託架構');
+    if(L.mineCount) refer.push('律師：擔保、質押、訴訟或婚姻財產風險評估');
+    charts=`<section class="card"><h2>風險雷達圖</h2>${radarChart(L.radar)}${RADAR.filter(([k])=>c.l3.ovr[k]&&c.l3.ovr[k].s).map(([k,t])=>`<p class="note">${t}：已按面談判斷調整為 ${c.l3.ovr[k].s} 分。${esc(c.l3.ovr[k].why||'')}</p>`).join('')}</section>
+      <section class="card"><h2>四池兩牆</h2>${poolsChart(L.pools,L)}</section>
+      <section class="card"><h2>資產可用性</h2>${L.tot?tierBar(L.tiers,L.tot):''}</section>
+      <section class="card"><h2>各資金池缺口</h2>${gapBars(L.gaps)}</section>`;
+  }
+  const asm=[`生活通脹 ${c.as.gL}%`,`教育通脹 ${c.as.gE}%`,`醫療通脹 ${c.as.gM}%`,`回報率 ${R.r}%（${{pess:'悲觀',base:'基本',opt:'樂觀'}[c.as.scen]}情景）`,`計劃到 ${c.as.life} 歲`,`每年的錢${c.as.begin?'年初':'年底'}領取`,`匯率 1 美元 = ${c.fx.CNY} 人民幣 = ${c.fx.HKD} 港元`];
+  return {sum,reco,refer,charts,asm,R};
+}
+function viewReport(){
+  const c=C(), r=buildReport();
+  return `<section class="card summary"><span class="eyebrow">財富診斷報告｜${new Date().toLocaleDateString('zh-HK')}</span><h1>${esc(c.name)}</h1>${c.example?'<p class="note"><span class="pill ex">示例資料</span></p>':''}
+  ${r.sum.map(s=>`<p>${s}</p>`).join('')}</section>
+  <section class="card"><h2>最重要的建議</h2><ol class="reco">${r.reco.map(x=>`<li><span>${x}</span></li>`).join('')}</ol></section>
+  ${r.charts}
+  <section class="card"><h2>假設條件</h2><p class="lead">${r.asm.join('；')}。</p></section>
+  ${r.refer.length?`<section class="card"><h2>建議轉介</h2><ul>${r.refer.map(x=>`<li>${x}</li>`).join('')}</ul></section>`:''}
+  <section class="card sunk"><h3>免責聲明</h3><p class="note">本報告根據客戶提供的資料及上列假設計算，僅供規劃討論參考，不構成投資、稅務或法律意見。回報率、通脹率及匯率均為假設，實際結果可能不同。保險產品的非保證利益並無保證。</p></section>
+  <section class="card noprint"><div class="row"><button class="btn pri" data-act="print">列印／存成 PDF</button><button class="btn" data-act="dlreport">下載報告網頁檔</button><button class="btn" data-act="copyreport">複製文字摘要</button></div><p class="note">「列印／存成 PDF」：在列印預覽用兩指放大，就會變成 PDF，可以分享或儲存。如果這個 App 不支援列印，就用「下載報告網頁檔」。</p></section>`;
+}
+function reportFile(){
+  const c=C(), html=$('#app').innerHTML.replace(/<section class="card noprint">[\s\S]*?<\/section>/,'');
+  const css=document.querySelector('style').textContent;
+  return `<!doctype html><html lang="zh-HK"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(c.name)} 財富診斷報告</title><style>${css}
+  :root{color-scheme:light} body{margin:0} main{padding-bottom:40px} .card{break-inside:avoid;animation:none} @media print{body{background:#fff}}</style></head><body data-theme="light"><main>${html}</main></body></html>`.replace('<body data-theme="light">','<body>').replace('<html lang="zh-HK">','<html lang="zh-HK" data-theme="light">');
+}
+
+/* ---------- events ---------- */
+function toast(t){ const e=$('#toast'); e.textContent=t; e.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>e.hidden=true,2400); }
+function touch(){ C().updated=Date.now(); save(); }
+function readVal(el){
+  const t=el.dataset.t;
+  if(t==='bool') return el.checked;
+  if(t==='text') return el.value;
+  if(t==='sel'){ const v=el.value; return v==='true'?true:v==='false'?false:v; }
+  const n=parseFloat(el.value); const v=isFinite(n)?n:0;
+  return t==='money'? v*10000/dispRate() : v;
+}
+function onField(e){
+  const el=e.target; if(!el.dataset||!el.dataset.k) return;
+  setP(C(),el.dataset.k,readVal(el)); touch();
+  if(el.dataset.k==='name') renderBar();
+  if(el.dataset.live){
+    const lbl=document.getElementById(el.id+'_v');
+    if(lbl){ const v=getP(C(),el.dataset.k); lbl.textContent = el.dataset.t==='money'?money(v): (el.dataset.k.includes('Age')||el.dataset.k.endsWith('.age')?v+' 歲':el.dataset.k.includes('Years')?v+' 年':v+'%'); }
+    if(ui.view==='results') renderOut(); if(ui.view==='policies') renderPlansOut();
+  }
+  if(e.type==='change' && el.dataset.rr) render(true);
+  if(e.type==='change' && el.dataset.k.startsWith('fx.')) {}
+}
+document.addEventListener('input',onField);
+document.addEventListener('change',e=>{ if(e.target.dataset&&(e.target.dataset.rr||e.target.dataset.t==='sel'||e.target.dataset.t==='bool')) onField(e); });
+
+async function dl(filename,data){
+  try{
+    const type=filename.endsWith('.json')?'application/json':'text/html';
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([data],{type:type+';charset=utf-8'}));
+    a.download=filename; document.body.appendChild(a); a.click();
+    setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},2000);
+    toast('已下載，請到「檔案」App 查看');
+  }catch(e){ toast('這裡不能下載，請改用「複製」'); }
+}
+async function copy(text,okMsg){
+  try{ await navigator.clipboard.writeText(text); toast(okMsg); }
+  catch(e){ const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy'); toast(okMsg);}catch(x){toast('未能複製');} ta.remove(); }
+}
+function importData(txt){
+  try{ const d=JSON.parse(txt); if(!d||!d.clients) throw 0; let n=0; Object.values(d.clients).forEach(c=>{ fix(c); S.clients[c.id]=c; n++; }); if(!S.cur||!S.clients[S.cur]) S.cur=Object.keys(S.clients)[0]; save(); render(); toast(`已還原 ${n} 位客戶`); }
+  catch(e){ toast('備份內容無法讀取，請確認是完整的備份'); }
+}
+$('#importFile').addEventListener('change',e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>importData(r.result); r.readAsText(f); e.target.value=''; });
+
+document.addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return; const d=b.dataset, c=C();
+  if(d.ccy){ c.ccy=d.ccy; touch(); render(true); return; }
+  if(d.scen){ c.as.scen=d.scen; touch(); render(true); return; }
+  if(d.type){ c.type=d.type; touch(); render(true); return; }
+  if(d.level){ c.level=+d.level; ui.step=0; touch(); render(true); return; }
+  if(d.step!=null&&d.step!==''){ ui.step=+d.step; render(); return; }
+  if(d.open){ S.cur=d.open; save(); render(); return; }
+  if(d.del){ ui.confirmDel=d.del; render(true); return; }
+  if(d.delok){ delete S.clients[d.delok]; ui.confirmDel=null; if(S.cur===d.delok) S.cur=Object.keys(S.clients)[0]||null; if(!S.cur){const n=newClient(false); S.clients[n.id]=n; S.cur=n.id;} save(); render(true); return; }
+  if(d.rmkid){ c.l2.edu.kids.splice(+d.rmkid,1); touch(); render(true); return; }
+  if(d.rmmem){ c.l3.members.splice(+d.rmmem,1); touch(); render(true); return; }
+  if(d.rmasset){ c.l3.assets.splice(+d.rmasset,1); touch(); render(true); return; }
+  if(d.rmplan){ c.plans.splice(+d.rmplan,1); touch(); render(true); return; }
+  switch(d.act){
+    case 'home': ui.view='home'; render(); break;
+    case 'form': ui.view='form'; render(); break;
+    case 'results': ui.view='results'; render(); break;
+    case 'policies': ui.view='policies'; render(); break;
+    case 'report': ui.view='report'; render(); break;
+    case 'next': ui.step++; render(); break;
+    case 'prev': ui.step=Math.max(0,ui.step-1); render(); break;
+    case 'levelup': c.level=c.type==='ent'?3:2; ui.step=0; ui.view='form'; touch(); render(); break;
+    case 'newclient': { const n=newClient(false); S.clients[n.id]=n; S.cur=n.id; save(); render(); setTimeout(()=>{const i=$('#f_name'); if(i){i.focus(); i.select();}},50); break; }
+    case 'delcancel': ui.confirmDel=null; render(true); break;
+    case 'addkid': c.l2.edu.kids.push({name:'孩子'+(c.l2.edu.kids.length+1),age:5,start:18,years:4,cost:c.l2.edu.kids[0]?c.l2.edu.kids[0].cost:0,have:0}); touch(); render(true); break;
+    case 'addmem': c.l3.members.push({role:'子女',name:'',age:10,loc:'內地',taxRes:'',have:0}); touch(); render(true); break;
+    case 'addasset': c.l3.assets.push({name:'',cat:'現金存款',v:0,ccy:'CNY',loc:'內地',liq:'A',hc:0,owner:'personal',biz:false,pool:'auto',rest:''}); touch(); render(true); break;
+    case 'addplan': c.plans.push({name:'方案 '+'ABC'[c.plans.length],ccy:'USD',text:''}); touch(); render(true); break;
+    case 'export': dl(`財富體檢備份-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(S)); break;
+    case 'copybk': copy(JSON.stringify(S),'備份文字已複製'); break;
+    case 'import': $('#importFile').click(); break;
+    case 'pastebk': importData($('#bkText').value); break;
+    case 'print': try{ window.print(); }catch(e){ toast('這個 App 不支援列印，請用下載'); } break;
+    case 'dlreport': dl(`${c.name}-財富診斷報告.html`,reportFile()); break;
+    case 'copyreport': { const r=buildReport(); copy(`${c.name} 財富診斷報告\n\n${r.sum.join('\n')}\n\n最重要的建議：\n${r.reco.map((x,i)=>(i+1)+'. '+x).join('\n')}\n\n假設：${r.asm.join('；')}`,'摘要已複製'); break; }
+  }
+});
+
+load(); render();
+if('serviceWorker' in navigator){ window.addEventListener('load',()=>{ navigator.serviceWorker.register('sw.js').catch(()=>{}); }); }
+</script>
+
+</body>
+</html>
