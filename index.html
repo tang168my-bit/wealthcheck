@@ -343,8 +343,29 @@ function compute(c){
   };
   const radar={}; Object.keys(auto).forEach(k=>{const o=L.ovr[k]; radar[k]= (o&&o.s)?+o.s:auto[k];});
   const safeTarget=b.spend*L.safeMonths;
+  // asset cash flow: income vs holding cost, with policy scenarios
+  const cf=L.cf||{holdTax:0,divCut:0,transTax:0,transEx:0};
+  const isRE=a=>a.cat==='投資房產'||a.cat==='自住房產';
+  const isEq=a=>['上市股權','非上市股權（本企業）','股票基金債券'].includes(a.cat);
+  const kindOf=x=>x>0?'make':x<0?'burn':'hold';
+  const flows=personal.map(a=>{
+    const fr=rateOf(c,a.ccy), inc=(+a.inc||0)*10000/fr, cost=(+a.cost||0)*10000/fr;
+    const drop=isRE(a)?st.re:isEq(a)?st.eq:0, val2=a.usd*(1-drop/100);
+    const inc2=inc*(1-(isEq(a)?cf.divCut:0)/100), cost2=cost+(isRE(a)?val2*cf.holdTax/100:0);
+    const net=inc-cost, net2=inc2-cost2;
+    return {name:a.name||a.cat,cat:a.cat,liq:a.liq,usd:a.usd,val2,inc,cost,net,inc2,cost2,net2,
+      y:a.usd?net/a.usd:0,y2:val2?net2/val2:0,kind:kindOf(net),kind2:kindOf(net2),own:!!(a.biz||a.cat==='非上市股權（本企業）'),loan:!!a.loan,re:isRE(a),eq:isEq(a)};
+  });
+  const sumF=(arr,f)=>arr.reduce((s,x)=>s+f(x),0);
+  const pas={base:sumF(flows,x=>x.net),stress:sumF(flows,x=>x.net2),stressEx:sumF(flows.filter(x=>!x.own),x=>x.net2)};
+  const kinds={make:0,hold:0,burn:0}; flows.forEach(f=>kinds[f.kind2]+=f.val2);
+  const transBase=sumF(flows.filter(f=>f.re||f.eq),f=>f.val2);
+  const transTax=Math.max(0,transBase-(cf.transEx||0))*cf.transTax/100;
+  const cfR={flows,pas,kinds,cov:spendY?pas.stress/spendY:0,covEx:spendY?pas.stressEx/spendY:0,
+    transBase,transTax,quick,transGap:Math.max(0,transTax-quick),scen:{...cf,re:st.re,eq:st.eq},
+    stressed:!!(cf.holdTax||cf.divCut)};
   R.l3={A,tot,totAll,tiers,quick,monthsL3,topF,topV,conc,topR,regPct,reg,ccyM,stressed,fxLoss,mineCount,mineAmt,estate,
-    lifeNeed,hlv,ciNeed,retNeed,gaps,auto,radar,retireOK,lifeRatio,ciRatio,
+    lifeNeed,hlv,ciNeed,retNeed,gaps,auto,radar,retireOK,lifeRatio,ciRatio,cf:cfR,
     pools:{safe:poolSum('safe'),growth:poolSum('growth'),legacy:poolSum('legacy'),home:poolSum('home'),business:poolSum('business'),safeTarget,legacyNeed,
       growthBiz:A.filter(a=>a.pl==='growth'&&a.biz).reduce((s,a)=>s+a.usd,0)},
     tomorrow:{
@@ -382,7 +403,8 @@ function newClient(example){
         tax:{on:false,rate:30,ex:w(5000)},ciYears:3,medOOP:w(500),ciBuffer:w(1000)},
       legacyChk:{will:false,bene:false,trust:false,knows:false,plan:false},
       healthChk:{med:false,ci:false,ltc:false},
-      stress:{eq:30,re:20,fx:10},safeMonths:12,ovr:{}},
+      stress:{eq:30,re:20,fx:10},safeMonths:12,ovr:{},
+      cf:{holdTax:0,divCut:0,transTax:0,transEx:0}},
     plans:[{name:'方案 A',ccy:'USD',text:''}],
     notes:''
   };
@@ -395,11 +417,12 @@ function newClient(example){
       {role:'子女',name:'大兒子',age:18,loc:'海外',taxRes:'待確認',have:0},
       {role:'子女',name:'小兒子',age:18,loc:'海外',taxRes:'待確認',have:0}];
     c.l3.assets=[
-      {name:'公司股權',cat:'非上市股權（本企業）',v:30000,ccy:'CNY',loc:'內地',liq:'D',hc:40,owner:'personal',biz:true,pool:'auto',rest:'有質押'},
-      {name:'北京住宅',cat:'自住房產',v:3000,ccy:'CNY',loc:'內地',liq:'C',hc:20,owner:'personal',biz:false,pool:'auto',rest:''},
-      {name:'投資物業兩套',cat:'投資房產',v:2000,ccy:'CNY',loc:'內地',liq:'C',hc:25,owner:'personal',biz:false,pool:'auto',rest:''},
-      {name:'銀行存款及理財',cat:'現金存款',v:2000,ccy:'CNY',loc:'內地',liq:'A',hc:0,owner:'personal',biz:false,pool:'auto',rest:''},
-      {name:'香港美元存款',cat:'現金存款',v:100,ccy:'USD',loc:'香港',liq:'A',hc:0,owner:'personal',biz:false,pool:'auto',rest:''}];
+      {name:'公司股權',cat:'非上市股權（本企業）',v:30000,ccy:'CNY',loc:'內地',liq:'D',hc:40,owner:'personal',biz:true,pool:'auto',rest:'有質押',inc:300,cost:0},
+      {name:'北京住宅',cat:'自住房產',v:3000,ccy:'CNY',loc:'內地',liq:'C',hc:20,owner:'personal',biz:false,pool:'auto',rest:'',inc:0,cost:8},
+      {name:'投資物業兩套',cat:'投資房產',v:2000,ccy:'CNY',loc:'內地',liq:'C',hc:25,owner:'personal',biz:false,pool:'auto',rest:'',inc:30,cost:36,loan:true},
+      {name:'銀行存款及理財',cat:'現金存款',v:2000,ccy:'CNY',loc:'內地',liq:'A',hc:0,owner:'personal',biz:false,pool:'auto',rest:'',inc:30,cost:0},
+      {name:'A股組合',cat:'股票基金債券',v:800,ccy:'CNY',loc:'內地',liq:'A',hc:0,owner:'personal',biz:false,pool:'auto',rest:'',inc:6,cost:0},
+      {name:'香港美元存款',cat:'現金存款',v:100,ccy:'USD',loc:'香港',liq:'A',hc:0,owner:'personal',biz:false,pool:'auto',rest:'',inc:4,cost:0}];
     c.l3.mines.pledge={on:true,amt:w(3000),note:'股權質押融資'};
     c.l3.mines.guar={on:true,amt:w(5000),note:'為公司銀行貸款擔保'};
     c.l3.ent.keyPerson=true;
@@ -538,6 +561,40 @@ function poolsChart(P,R3){
   g+=`<rect x="${w-342}" y="${h-70}" width="320" height="58" rx="10" fill="var(--gold-soft)" stroke="var(--gold)"/><text x="${w-326}" y="${h-44}" font-size="14" font-weight="600" fill="var(--ink)">企業（牆外）</text><text x="${w-326}" y="${h-22}" font-size="14" fill="var(--gold)" font-family="IBM Plex Mono,monospace">${fmtW(P.business)}</text>`;
   return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img">${g}</svg></div><p class="note">牆的線條：實線代表已建立，虛線代表未完全建立。單位：${ccyLabel()}</p>`;
 }
+const KIND={make:['生錢','ok','var(--good)'],hold:['存錢','ex','var(--gold)'],burn:['耗錢','bad','var(--risk)']};
+function cfQuad(F){
+  const w=720,h=440,pl=60,pr=16,pt=16,pb=56,W=w-pl-pr,H=h-pt-pb;
+  const col={D:.12,C:.37,B:.63,A:.88};
+  let m=niceMax(Math.max(4,...F.map(f=>Math.abs(f.y2*100))));
+  const X=t=>pl+W*t, Y=v=>pt+H/2-(v/m)*(H/2);
+  const maxV=Math.max(1,...F.map(f=>f.val2));
+  let g='';
+  const q=[[0,0,'鎖住的奶牛','能生錢，但難賣','var(--accent-soft)'],[.5,0,'現金奶牛','能生錢，又容易賣','var(--good-soft)'],[0,.5,'包袱','不生錢，又難賣','var(--risk-soft)'],[.5,.5,'儲錢罐','容易賣，但不生錢','var(--gold-soft)']];
+  q.forEach(([x,y,t,s,c])=>{ g+=`<rect x="${X(x)}" y="${pt+H*y}" width="${W/2}" height="${H/2}" fill="${c}" fill-opacity=".7"/><text x="${X(x)+10}" y="${pt+H*y+22}" font-size="15" font-weight="700" fill="var(--ink)">${t}</text><text x="${X(x)+10}" y="${pt+H*y+40}" font-size="12" fill="var(--muted)">${s}</text>`; });
+  [-m,-m/2,0,m/2,m].forEach(v=>{ g+=`<text x="${pl-8}" y="${Y(v)+4}" text-anchor="end" font-size="12" fill="var(--muted)">${v>0?'+':''}${(+v.toFixed(1))}%</text>`; });
+  g+=`<line x1="${pl}" x2="${pl+W}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--muted)" stroke-width="1.2"/><line x1="${X(.5)}" x2="${X(.5)}" y1="${pt}" y2="${pt+H}" stroke="var(--muted)" stroke-width="1.2"/>`;
+  [['D','1年以上'],['C','3–12個月'],['B','30天內'],['A','即時／7天']].forEach(([k,t])=>{ g+=`<text x="${X(col[k])}" y="${pt+H+20}" text-anchor="middle" font-size="12" fill="var(--muted)">${t}</text>`; });
+  g+=`<text x="${pl}" y="${pt+H+44}" font-size="13" fill="var(--muted)">← 難變現</text><text x="${pl+W}" y="${pt+H+44}" text-anchor="end" font-size="13" fill="var(--muted)">容易變現 →</text>`;
+  const by={A:[],B:[],C:[],D:[]}; F.forEach(f=>(by[f.liq]||by.D).push(f));
+  Object.entries(by).forEach(([k,arr])=>{ const sp=Math.min(70,W*0.22/Math.max(1,arr.length));
+    arr.sort((a,b)=>b.val2-a.val2).forEach((f,i)=>{ const x=X(col[k])+(i-(arr.length-1)/2)*sp, y=Math.max(pt+12,Math.min(pt+H-12,Y(f.y2*100))), r=7+24*Math.sqrt(f.val2/maxV), c=KIND[f.kind2][2];
+      g+=`<circle cx="${x}" cy="${y}" r="${r}" fill="${c}" fill-opacity=".45" stroke="${c}" stroke-width="2"/>`;
+      g+=`<text x="${x}" y="${y-r-5}" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink)">${esc(f.name)}</text>`; }); });
+  return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img">${g}</svg></div><div class="legend">${Object.values(KIND).map(([t,,c])=>`<span><i style="background:${c}"></i>${t}資產</span>`).join('')}<span>圓點越大，資產金額越大；縱軸是每年淨收益率（收入減持有成本，再除以資產價值）</span></div>`;
+}
+function cfCard(c,F,full){
+  const cls=v=>v<.3?'bad':v<.7?'mid':'ok';
+  const tot=F.kinds.make+F.kinds.hold+F.kinds.burn;
+  const sc=F.scen, notes=[];
+  if(sc.re) notes.push(`房價跌 ${sc.re}%`); if(sc.eq) notes.push(`股權跌 ${sc.eq}%`); if(sc.holdTax) notes.push(`房產每年多付價值的 ${sc.holdTax}% 持有稅費`); if(sc.divCut) notes.push(`股票分紅減少 ${sc.divCut}%`);
+  let h=`<section class="card"><span class="eyebrow">資產會不會生錢</span><h2>資產現金流</h2><p class="lead">看的不是資產值多少，而是每年帶來多少錢、又要花多少錢去養。</p>
+  <div class="big">${tile('被動收入覆蓋率',pct(F.cov,0),'資產淨收入 ÷ 家庭年支出',cls(F.cov))}${tile('不計本企業分紅',pct(F.covEx,0),'生意出問題時，資產還能養家幾成',cls(F.covEx))}${tile('資產每年淨收入',fmtW(F.pas.stress),ccyLabel()+'／年',F.pas.stress<0?'bad':'')}${tile('耗錢資產',fmtW(F.kinds.burn),tot?'佔 '+Math.round(F.kinds.burn/tot*100)+'%':'',F.kinds.burn>0?'bad':'ok')}</div>
+  ${F.flows.length?cfQuad(F.flows):'<p class="note">先在「資產清單」加入資產，並填寫每年收入和持有成本。</p>'}
+  ${full&&F.flows.length?`<div class="tbl"><table><tr><th>資產</th><th>類型</th><th>每年收入</th><th>持有成本</th><th>淨現金流</th><th>淨收益率</th></tr>${F.flows.map(f=>`<tr><td class="t">${esc(f.name)}${f.loan?' <span class="pill">有貸款</span>':''}</td><td class="t"><span class="pill ${KIND[f.kind2][1]}">${KIND[f.kind2][0]}</span></td><td>${fmtW(f.inc2)}</td><td>${fmtW(f.cost2)}</td><td>${fmtW(f.net2)}</td><td>${pct(f.y2,1)}</td></tr>`).join('')}</table></div>`:''}
+  <p class="note">${notes.length?'已計入情景：'+notes.join('、')+'。':'目前未加入政策情景，拖動滑塊可以測試。'}單位：${ccyLabel()}／年。內地目前沒有全國性的房地產稅、遺產稅和贈與稅，這裡只是「如果出台」的情景測試。</p></section>`;
+  if(sc.transTax>0) h+=`<section class="card"><span class="eyebrow">傳承情景</span><h2>如果傳給下一代時要交稅</h2><div class="big">${tile('房產及股權（情景後價值）',fmtW(F.transBase),ccyLabel())}${tile('假設稅率 '+sc.transTax+'%',fmtW(F.transTax),'需要準備的現金','mid')}${tile('30 天內可動用',fmtW(F.quick),ccyLabel())}${tile('現金缺口',fmtW(F.transGap),F.transGap>0?'可能要被迫低價賣資產':'流動資金足夠',F.transGap>0?'bad':'ok')}</div><p class="note">按免稅額 ${money(sc.transEx||0)} 計算。稅率和免稅額都是假設，請按情況調整。</p></section>`;
+  return h;
+}
 function tierBar(t,tot){
   const w=720,h=70; let x=0,g=''; const cols={A:'var(--good)',B:'var(--accent)',C:'var(--warn)',D:'var(--risk)'}, names={A:'快',B:'慢',C:'折',D:'卡'};
   ['A','B','C','D'].forEach(k=>{ const bw=tot?t[k]/tot*w:0; if(bw>0){ g+=`<rect x="${x}" y="0" width="${bw}" height="34" fill="${cols[k]}" fill-opacity=".8"/>`; if(bw>40) g+=`<text x="${x+bw/2}" y="22" text-anchor="middle" font-size="14" font-weight="700" fill="var(--surface)">${names[k]} ${Math.round(t[k]/tot*100)}%</text>`;} x+=bw; });
@@ -648,7 +705,9 @@ function formAssump(){
   <div class="grid">${fNum('as.gL','生活通脹','%')}${fNum('as.gE','教育通脹','%')}${fNum('as.gM','醫療通脹','%')}${fNum('as.life','計劃到幾歲','歲')}</div>
   <h3>回報率三個情景</h3><div class="grid">${fNum('as.r.pess','悲觀','%')}${fNum('as.r.base','基本','%')}${fNum('as.r.opt','樂觀','%')}${fSel('as.scen','目前使用的情景',[['pess','悲觀'],['base','基本'],['opt','樂觀']])}</div>
   <h3>領取時間</h3><div class="grid">${fSel('as.begin','每年的錢在什麼時候領',[['false','年底領（一般情況）'],['true','年初領（例如身故後家人馬上要用錢）']])}</div>
-  <p class="note">計算方法：每年的生活費先按通脹上調，再折現到今天。輸入的金額都是今天的價錢。</p></section>`;
+  <p class="note">計算方法：每年的生活費先按通脹上調，再折現到今天。輸入的金額都是今天的價錢。</p></section>
+  ${C().level===3?`<section class="card"><h2>政策與持有成本情景</h2><p class="lead">內地目前沒有全國性的房地產稅、遺產稅和贈與稅。這裡用來測試「如果出台」時資產現金流會怎樣變化，預設為 0。</p>
+  <div class="grid">${fNum('l3.stress.re','房價下跌','%')}${fNum('l3.stress.eq','股權下跌','%')}${fNum('l3.cf.holdTax','房產每年多付持有稅費（佔價值）','%')}${fNum('l3.cf.divCut','股票分紅減少','%')}${fNum('l3.cf.transTax','贈與稅／遺產稅稅率（房產及股權）','%')}${fMoney('l3.cf.transEx','假設免稅額')}</div></section>`:''}`;
 }
 function formMembers(){
   const c=C(), L=c.l3;
@@ -668,9 +727,13 @@ function formAssets(){
   <div class="f"><label for="${id(`l3.assets.${i}.v`)}">金額</label><div class="unit"><input type="number" inputmode="decimal" step="any" id="${id(`l3.assets.${i}.v`)}" data-k="l3.assets.${i}.v" data-t="num" value="${a.v}"><span>萬${a.ccy==='USD'?'美元':a.ccy==='HKD'?'港元':'元'}</span></div></div>
   ${fSel(`l3.assets.${i}.ccy`,'幣種',[['CNY','人民幣'],['USD','美元'],['HKD','港元']],1)}${fSel(`l3.assets.${i}.loc`,'所在地',LOCS)}${fSel(`l3.assets.${i}.liq`,'多快能變現',Object.entries(LIQ))}
   ${fNum(`l3.assets.${i}.hc`,'急賣要打幾折（折價）','%')}${fSel(`l3.assets.${i}.owner`,'屬於',[['personal','個人／家庭'],['company','公司']],1)}${fSel(`l3.assets.${i}.pool`,'放在哪個池子',[['auto','自動判斷'],...Object.entries(POOLS)],1)}
-  ${fText(`l3.assets.${i}.rest`,'限制','質押、代持、限售…')}</div>${fChk(`l3.assets.${i}.biz`,'這項資產和自己的生意同方向（例如做地產又投資地產股）',1)}</div>`}).join('')}
+  ${fText(`l3.assets.${i}.rest`,'限制','質押、代持、限售…')}
+  ${aMoney(i,'inc','每年收入','租金、分紅、利息')}${aMoney(i,'cost','每年持有成本','物業費、維修、保險、貸款利息、稅費')}</div>
+  ${fChk(`l3.assets.${i}.loan`,'這項資產有貸款（利息請計入持有成本）')}${fChk(`l3.assets.${i}.biz`,'這項資產和自己的生意同方向（例如做地產又投資地產股）',1)}</div>`}).join('')}
   ${L.assets.length?'':'<p class="note">還沒有資產。點「加一項資產」開始。</p>'}</section>`;
 }
+function aMoney(i,k,label,hint){ const a=C().l3.assets[i], key=`l3.assets.${i}.${k}`;
+  return `<div class="f"><label for="${id(key)}">${label}</label><div class="unit"><input type="number" inputmode="decimal" step="any" id="${id(key)}" data-k="${key}" data-t="num" value="${a[k]||0}"><span>萬${a.ccy==='USD'?'美元':a.ccy==='HKD'?'港元':'元'}</span></div><span class="hint">${hint}</span></div>`; }
 function formLiab(){
   const c=C(), m=c.l3.mines;
   const mine=(k,t,q)=>`<div class="asset">${fChk(`l3.mines.${k}.on`,`<b>${t}</b>　${q}`,1)}${m[k].on?`<div class="grid">${k!=='marital'?fMoney(`l3.mines.${k}.amt`,'涉及金額'):''}${fText(`l3.mines.${k}.note`,'情況說明')}</div>`:''}</div>`;
@@ -705,7 +768,7 @@ function viewResults(){
   let ctr='';
   if(c.level===1) ctr=`${slider('l1.monthly','每月存多少',0,Math.max(10,Math.ceil(c.basic.income*dispRate()/10000*1.5)),0.1,v=>money(v),true)}${slider('l1.startAge','從幾歲開始存',c.basic.age,Math.max(c.basic.age+1,c.l1.toAge-1),1,v=>v+' 歲')}`;
   if(c.level===2) ctr=`${c.l2.retire.on?slider('l2.retire.age','退休年齡',Math.max(c.basic.age+1,45),75,1,v=>v+' 歲'):''}${c.l2.retire.on?slider('l2.retire.monthly','退休後每月生活費',0,Math.max(5,Math.ceil(c.basic.spend*dispRate()/10000*2)),0.1,v=>money(v),true):''}${slider('l1.monthly','每月存多少（複利圖）',0,Math.max(10,Math.ceil(c.basic.income*dispRate()/10000*1.5)),0.1,v=>money(v),true)}`;
-  if(c.level===3) ctr=`${slider('l3.stress.eq','股權下跌',0,80,5,v=>v+'%')}${slider('l3.stress.re','房產下跌',0,60,5,v=>v+'%')}${slider('l3.stress.fx','人民幣貶值',0,40,1,v=>v+'%')}${slider('l3.need.supportYears','家人需要幾年運轉金',1,30,1,v=>v+' 年')}`;
+  if(c.level===3) ctr=`${slider('l3.stress.eq','股權下跌',0,80,5,v=>v+'%')}${slider('l3.stress.re','房產下跌',0,60,5,v=>v+'%')}${slider('l3.stress.fx','人民幣貶值',0,40,1,v=>v+'%')}${slider('l3.need.supportYears','家人需要幾年運轉金',1,30,1,v=>v+' 年')}${slider('l3.cf.holdTax','房產每年多付持有稅費（佔價值）',0,3,0.1,v=>v+'%')}${slider('l3.cf.divCut','股票分紅減少',0,100,10,v=>v+'%')}${slider('l3.cf.transTax','贈與稅／遺產稅（情景）',0,50,5,v=>v+'%')}`;
   const scen=`<div class="f"><span class="lab">回報率情景</span><div class="seg">${[['pess','悲觀'],['base','基本'],['opt','樂觀']].map(([k,t])=>`<button data-scen="${k}" aria-pressed="${c.as.scen===k}">${t} ${c.as.r[k]}%</button>`).join('')}</div></div>`;
   const ovr = c.level===3?`<details><summary>手動調整雷達圖分數</summary><div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
     <div class="ovr note"><span>項目</span><span>自動</span><span>手動</span><span class="rs">原因</span></div>
@@ -739,6 +802,7 @@ function renderOut(){
     h+=`<section class="card"><span class="eyebrow">第一步：全局</span><h2>風險雷達圖</h2><p class="lead">5 分最健康。凹進去的地方，就是要先處理的地方。</p>${radarChart(L.radar)}</section>`;
     h+=`<section class="card"><span class="eyebrow">錢放的位置對不對</span><h2>四池兩牆</h2>${poolsChart(L.pools,L)}</section>`;
     h+=`<section class="card"><span class="eyebrow">資產看能不能用</span><h2>資產可用性</h2><div class="big">${tile('家庭總資產',fmtW(L.tot),ccyLabel()+'（不含公司名下）')}${tile('30 天內可動用',fmtW(L.quick),'佔 '+(L.tot?Math.round(L.quick/L.tot*100):0)+'%',L.tot&&L.quick/L.tot<.15?'bad':'')}${tile('最大單一風險來源',L.topF||'—',L.topF?'佔 '+Math.round(L.conc)+'%':'',L.conc>=70?'bad':L.conc>=50?'mid':'')}${tile('資產最集中的地區',L.topR||'—',L.topR?'佔 '+Math.round(L.regPct)+'%':'',L.regPct>=80?'bad':'')}</div>${L.tot?tierBar(L.tiers,L.tot):'<p class="note">先在「資產清單」加入資產。</p>'}</section>`;
+    h+=cfCard(c,L.cf,true);
     const t=L.tomorrow;
     h+=`<section class="card"><span class="eyebrow">如果明天</span><h2>出事時，家裡的錢能撐多久？</h2><div class="big">${tile('收入中斷',mo(t.income)+' 個月','30 天內可動用的錢',mcls(t.income))}${tile('重病',mo(t.ill)+' 個月','加重疾賠償，扣除醫療自費',mcls(t.ill))}${tile('身故',mo(t.death)+' 個月','加壽險賠償，扣除貸款'+(L.estate?'及遺產稅情景':''),mcls(t.death))}${tile('生意倒閉',mo(t.biz)+' 個月','只計與本業無關的流動資產，扣除擔保和質押',mcls(t.biz))}</div>
     <div class="big">${tile('壓力測試後總資產',fmtW(L.stressed),`股權跌 ${c.l3.stress.eq}%、房產跌 ${c.l3.stress.re}%、人民幣貶 ${c.l3.stress.fx}%`,L.tot&&L.stressed/L.tot<.6?'bad':'mid')}${tile('縮水',fmtW(L.tot-L.stressed),'佔 '+(L.tot?Math.round((1-L.stressed/L.tot)*100):0)+'%')}${tile('其中人民幣貶值造成',fmtW(L.fxLoss),'以'+(c.ccy==='USD'?'美元':'人民幣')+'計')}</div><p class="note">按家庭每月支出 ${money(c.basic.spend)} 計算。人民幣貶值的影響以美元購買力計。</p></section>`;
@@ -829,14 +893,18 @@ function buildReport(){
     const low=RADAR.filter(([k])=>L.radar[k]<=2).map(x=>x[1]);
     sum.push(`家庭總資產約 ${money(L.tot)}，其中 30 天內可動用的只有 ${money(L.quick)}，可支撐約 ${mo(L.monthsL3)} 個月家庭支出。`);
     if(L.topF) sum.push(`最大的單一風險來源是「${L.topF}」，佔家庭資產約 ${Math.round(L.conc)}%。`);
+    sum.push(`資產每年淨收入約 ${money(L.cf.pas.stress)}，可覆蓋家庭支出的 ${pct(L.cf.cov,0)}；不計本企業分紅只有 ${pct(L.cf.covEx,0)}。`);
     sum.push(low.length?`需要優先處理的方面：${low.join('、')}。`:'各方面沒有嚴重弱項，建議維持定期檢視。');
     reco=weak.length?weak.sort((a,b)=>ORDER.indexOf(a[0])-ORDER.indexOf(b[0])).map(([k])=>ADVICE[k].replace('{m}',c.l3.safeMonths)):['目前結構健康，建議每年檢視一次。'];
+    if(L.cf.kinds.burn>0||L.cf.covEx<.5) reco.push('盤點不生錢的資產：耗錢資產考慮出租、出售或逐步退出，用 3 至 5 年把一部分資產轉為能產生現金流的資產。');
+    if(L.cf.transGap>0) reco.push('為可能出台的贈與稅或遺產稅預留流動資金，避免傳承時被迫低價賣出房產或股權。');
     if(L.estate||c.l3.members.some(m=>m.taxRes&&m.taxRes!=='內地')||c.l3.members.some(m=>m.loc==='海外')) refer.push('持牌稅務師：跨境稅務居民身份及申報安排');
     if(!c.l3.legacyChk.will||!c.l3.legacyChk.trust) refer.push('律師／信託顧問：遺囑及信託架構');
     if(L.mineCount) refer.push('律師：擔保、質押、訴訟或婚姻財產風險評估');
     charts=`<section class="card"><h2>風險雷達圖</h2>${radarChart(L.radar)}${RADAR.filter(([k])=>c.l3.ovr[k]&&c.l3.ovr[k].s).map(([k,t])=>`<p class="note">${t}：已按面談判斷調整為 ${c.l3.ovr[k].s} 分。${esc(c.l3.ovr[k].why||'')}</p>`).join('')}</section>
       <section class="card"><h2>四池兩牆</h2>${poolsChart(L.pools,L)}</section>
       <section class="card"><h2>資產可用性</h2>${L.tot?tierBar(L.tiers,L.tot):''}</section>
+      ${cfCard(c,L.cf,false)}
       <section class="card"><h2>各資金池缺口</h2>${gapBars(L.gaps)}</section>`;
   }
   const asm=[`生活通脹 ${c.as.gL}%`,`教育通脹 ${c.as.gE}%`,`醫療通脹 ${c.as.gM}%`,`回報率 ${R.r}%（${{pess:'悲觀',base:'基本',opt:'樂觀'}[c.as.scen]}情景）`,`計劃到 ${c.as.life} 歲`,`每年的錢${c.as.begin?'年初':'年底'}領取`,`匯率 1 美元 = ${c.fx.CNY} 人民幣 = ${c.fx.HKD} 港元`];
@@ -932,7 +1000,7 @@ document.addEventListener('click',e=>{
     case 'delcancel': ui.confirmDel=null; render(true); break;
     case 'addkid': c.l2.edu.kids.push({name:'孩子'+(c.l2.edu.kids.length+1),age:5,start:18,years:4,cost:c.l2.edu.kids[0]?c.l2.edu.kids[0].cost:0,have:0}); touch(); render(true); break;
     case 'addmem': c.l3.members.push({role:'子女',name:'',age:10,loc:'內地',taxRes:'',have:0}); touch(); render(true); break;
-    case 'addasset': c.l3.assets.push({name:'',cat:'現金存款',v:0,ccy:'CNY',loc:'內地',liq:'A',hc:0,owner:'personal',biz:false,pool:'auto',rest:''}); touch(); render(true); break;
+    case 'addasset': c.l3.assets.push({name:'',cat:'現金存款',v:0,ccy:'CNY',loc:'內地',liq:'A',hc:0,owner:'personal',biz:false,pool:'auto',rest:'',inc:0,cost:0,loan:false}); touch(); render(true); break;
     case 'addplan': c.plans.push({name:'方案 '+'ABC'[c.plans.length],ccy:'USD',text:''}); touch(); render(true); break;
     case 'export': dl(`財富體檢備份-${new Date().toISOString().slice(0,10)}.json`,JSON.stringify(S)); break;
     case 'copybk': copy(JSON.stringify(S),'備份文字已複製'); break;
